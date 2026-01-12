@@ -31,3 +31,10 @@ act_storage/
 # OS
 .DS_Store
 Thumbs.db
+
+user_data.json
+__pycache__/
+*.pyc
+local_outputs/
+.env
+

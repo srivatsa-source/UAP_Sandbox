@@ -146,12 +146,149 @@ class Dispatcher:
                 "state_updates": {"context_summary": f"Ollama API call failed: {str(e)}"}
             })
     
+    def _call_openai(self, prompt: str, model: str) -> str:
+        """Call OpenAI API."""
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: OPENAI_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: OpenAI call failed: {str(e)}", "state_updates": {}})
+    
+    def _call_anthropic(self, prompt: str, model: str) -> str:
+        """Call Anthropic Claude API."""
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: ANTHROPIC_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 2048,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["content"][0]["text"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: Anthropic call failed: {str(e)}", "state_updates": {}})
+    
+    def _call_together(self, prompt: str, model: str) -> str:
+        """Call Together AI API (OpenAI-compatible)."""
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("TOGETHER_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: TOGETHER_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                "https://api.together.xyz/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: Together call failed: {str(e)}", "state_updates": {}})
+    
+    def _call_openrouter(self, prompt: str, model: str) -> str:
+        """Call OpenRouter API (OpenAI-compatible)."""
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: OPENROUTER_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/uap-protocol"
+                },
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: OpenRouter call failed: {str(e)}", "state_updates": {}})
+    
+    def _call_google(self, prompt: str, model: str) -> str:
+        """Call Google Gemini API."""
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: GOOGLE_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={api_key}",
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: Google call failed: {str(e)}", "state_updates": {}})
+    
     def _call_agent(self, agent: AgentConfig, prompt: str) -> str:
         """Route to appropriate backend."""
         if agent.backend == "groq":
             return self._call_groq(prompt, agent.model)
         elif agent.backend == "ollama":
             return self._call_ollama(prompt, agent.model)
+        elif agent.backend == "openai":
+            return self._call_openai(prompt, agent.model)
+        elif agent.backend == "anthropic":
+            return self._call_anthropic(prompt, agent.model)
+        elif agent.backend == "together":
+            return self._call_together(prompt, agent.model)
+        elif agent.backend == "openrouter":
+            return self._call_openrouter(prompt, agent.model)
+        elif agent.backend == "google":
+            return self._call_google(prompt, agent.model)
         else:
             return json.dumps({
                 "answer": f"ERROR: Unknown backend: {agent.backend}",
