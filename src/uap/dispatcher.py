@@ -20,8 +20,8 @@ class AgentConfig:
     agent_id: str
     agent_type: str  # planner, coder, designer, reviewer, debugger, etc.
     system_prompt: str
-    model: str = "llama-3.1-8b-instant"
-    backend: str = "groq"  # "groq" or "ollama"
+    model: str = "gemini-1.5-flash"
+    backend: str = "gemini"  # "gemini", "groq", or "ollama"
     source: str = "builtin"  # "builtin", "github:user/repo", "local"
     metadata: dict = field(default_factory=dict)
 
@@ -33,14 +33,18 @@ class Dispatcher:
     """
     
     def __init__(
-        self, 
+        self,
+        oauth_credentials=None,
         groq_api_key: Optional[str] = None, 
         ollama_base_url: str = "http://localhost:11434"
     ):
         self.state_manager = StateManager()
         self.agents: dict[str, AgentConfig] = {}
         
-        # Load config
+        # OAuth credentials for Gemini
+        self.oauth_credentials = oauth_credentials
+        
+        # Load config for fallback
         config = get_config()
         self.groq_api_key = groq_api_key or config.get("groq_api_key")
         self.ollama_base_url = ollama_base_url or config.get("ollama_url", "http://localhost:11434")
@@ -185,12 +189,166 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
                 "state_updates": {"context_summary": f"Ollama API call failed: {str(e)}"}
             })
     
-    def _call_agent(self, agent: AgentConfig, prompt: str) -> str:
+    def _call_gemini(self, prompt: str, model: str) -> str:
+        """Call Google Gemini API using OAuth credentials."""
+        if not self.oauth_credentials:
+            return json.dumps({
+                "answer": "ERROR: Not authenticated. Run 'uap-cli login' first.",
+                "state_updates": {"context_summary": "Authentication required"}
+            })
+        
+        try:
+            import google.generativeai as genai
+            from google.auth.transport.requests import Request
+            
+            # Refresh credentials if needed
+            if self.oauth_credentials.expired and self.oauth_credentials.refresh_token:
+                self.oauth_credentials.refresh(Request())
+            
+            # Configure with OAuth token
+            genai.configure(credentials=self.oauth_credentials)
+            
+            gen_model = genai.GenerativeModel(model)
+            response = gen_model.generate_content(prompt)
+            
+            return response.text
+            
+        except ImportError:
+            return json.dumps({
+                "answer": "ERROR: google-generativeai not installed. Run: pip install google-generativeai",
+                "state_updates": {"context_summary": "Gemini SDK not installed"}
+            })
+        except Exception as e:
+            return json.dumps({
+                "answer": f"ERROR: Gemini API call failed: {str(e)}",
+                "state_updates": {"context_summary": f"Gemini error: {str(e)}"}
+            })
+    
+    def _call_openai(self, prompt: str, model: str, user_email: str = None) -> str:
+        """Call OpenAI API using stored credentials from vault."""
+        try:
+            from uap.vault import get_credential
+            
+            api_key = get_credential(user_email, "openai") if user_email else None
+            
+            if not api_key:
+                return json.dumps({
+                    "answer": "OpenAI not linked. Please link your OpenAI account in the UAP dashboard.",
+                    "state_updates": {"context_summary": "OpenAI agent not linked to user identity"}
+                })
+            
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
+            
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=2048
+            )
+            
+            return response.choices[0].message.content
+            
+        except ImportError as e:
+            if "openai" in str(e):
+                return json.dumps({
+                    "answer": "ERROR: openai package not installed. Run: pip install openai",
+                    "state_updates": {"context_summary": "OpenAI SDK not installed"}
+                })
+            raise
+        except Exception as e:
+            return json.dumps({
+                "answer": f"ERROR: OpenAI API call failed: {str(e)}",
+                "state_updates": {"context_summary": f"OpenAI error: {str(e)}"}
+            })
+    
+    def _call_anthropic(self, prompt: str, model: str, user_email: str = None) -> str:
+        """Call Anthropic Claude API using stored credentials from vault."""
+        try:
+            from uap.vault import get_credential
+            
+            api_key = get_credential(user_email, "anthropic") if user_email else None
+            
+            if not api_key:
+                return json.dumps({
+                    "answer": "Claude not linked. Please link your Anthropic account in the UAP dashboard.",
+                    "state_updates": {"context_summary": "Claude agent not linked to user identity"}
+                })
+            
+            from anthropic import Anthropic
+            client = Anthropic(api_key=api_key)
+            
+            message = client.messages.create(
+                model=model,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            return message.content[0].text
+            
+        except ImportError as e:
+            if "anthropic" in str(e):
+                return json.dumps({
+                    "answer": "ERROR: anthropic package not installed. Run: pip install anthropic",
+                    "state_updates": {"context_summary": "Anthropic SDK not installed"}
+                })
+            raise
+        except Exception as e:
+            return json.dumps({
+                "answer": f"ERROR: Claude API call failed: {str(e)}",
+                "state_updates": {"context_summary": f"Claude error: {str(e)}"}
+            })
+    
+    def _call_mistral(self, prompt: str, model: str, user_email: str = None) -> str:
+        """Call Mistral API using stored credentials from vault."""
+        try:
+            from uap.vault import get_credential
+            
+            api_key = get_credential(user_email, "mistral") if user_email else None
+            
+            if not api_key:
+                return json.dumps({
+                    "answer": "Mistral not linked. Please link your Mistral account in the UAP dashboard.",
+                    "state_updates": {"context_summary": "Mistral agent not linked to user identity"}
+                })
+            
+            from mistralai import Mistral
+            client = Mistral(api_key=api_key)
+            
+            response = client.chat.complete(
+                model=model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            return response.choices[0].message.content
+            
+        except ImportError as e:
+            if "mistral" in str(e):
+                return json.dumps({
+                    "answer": "ERROR: mistralai package not installed. Run: pip install mistralai",
+                    "state_updates": {"context_summary": "Mistral SDK not installed"}
+                })
+            raise
+        except Exception as e:
+            return json.dumps({
+                "answer": f"ERROR: Mistral API call failed: {str(e)}",
+                "state_updates": {"context_summary": f"Mistral error: {str(e)}"}
+            })
+    
+    def _call_agent(self, agent: AgentConfig, prompt: str, user_email: str = None) -> str:
         """Route to appropriate backend."""
-        if agent.backend == "groq":
+        if agent.backend == "gemini":
+            return self._call_gemini(prompt, agent.model)
+        elif agent.backend == "groq":
             return self._call_groq(prompt, agent.model)
         elif agent.backend == "ollama":
             return self._call_ollama(prompt, agent.model)
+        elif agent.backend == "openai":
+            return self._call_openai(prompt, agent.model, user_email)
+        elif agent.backend == "anthropic":
+            return self._call_anthropic(prompt, agent.model, user_email)
+        elif agent.backend == "mistral":
+            return self._call_mistral(prompt, agent.model, user_email)
         else:
             return json.dumps({
                 "answer": f"ERROR: Unknown backend: {agent.backend}",

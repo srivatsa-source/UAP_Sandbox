@@ -31,10 +31,12 @@ console = Console()
 agents_app = typer.Typer(help="Manage agents")
 config_app = typer.Typer(help="Manage configuration")
 sessions_app = typer.Typer(help="Manage sessions")
+auth_app = typer.Typer(help="Authentication & agent linking")
 
 app.add_typer(agents_app, name="agents")
 app.add_typer(config_app, name="config")
 app.add_typer(sessions_app, name="sessions")
+app.add_typer(auth_app, name="auth")
 
 
 # =============================================================================
@@ -385,6 +387,376 @@ def config_path():
     
     console.print(f"UAP Home: {get_uap_home()}")
     console.print(f"Config: {get_config_path()}")
+
+
+# =============================================================================
+# AUTH COMMANDS - Gmail-Federated Agent Linking
+# =============================================================================
+
+@auth_app.command("login")
+def auth_login():
+    """
+    Sign in with Google (Gmail identity anchor).
+    
+    This authenticates you via OAuth and enables Gemini access.
+    Other agents can then be linked to your Gmail identity.
+    
+    Example:
+        uap auth login
+    """
+    from uap.oauth import UAPOAuth
+    
+    oauth = UAPOAuth()
+    
+    with console.status("[bold green]Opening browser for Google sign-in..."):
+        try:
+            creds = oauth.authenticate()
+            if creds:
+                user_info = oauth.get_user_info(creds)
+                email = user_info.get("email", "unknown")
+                console.print(f"[green]✓ Signed in as {email}[/green]")
+                console.print(f"[cyan]Gemini is now linked via OAuth[/cyan]")
+                console.print(f"\n[dim]Link other agents: uap auth link openai[/dim]")
+        except Exception as e:
+            console.print(f"[red]Authentication failed: {e}[/red]")
+            raise typer.Exit(1)
+
+
+@auth_app.command("status")
+def auth_status():
+    """
+    Show authentication status and linked agents.
+    
+    Example:
+        uap auth status
+    """
+    from uap.oauth import UAPOAuth
+    from uap.vault import get_linked_agents
+    
+    oauth = UAPOAuth()
+    
+    if not oauth.is_authenticated():
+        console.print("[yellow]Not signed in[/yellow]")
+        console.print("[dim]Sign in with: uap auth login[/dim]")
+        return
+    
+    creds = oauth.load_credentials()
+    user_info = oauth.get_user_info(creds)
+    email = user_info.get("email", "unknown")
+    
+    console.print(f"[green]✓ Signed in as {email}[/green]\n")
+    
+    # Show linked agents
+    linked = get_linked_agents(email)
+    
+    table = Table(title="Linked Agents")
+    table.add_column("Agent", style="cyan")
+    table.add_column("Provider")
+    table.add_column("Status", style="green")
+    table.add_column("Linked At", style="dim")
+    
+    for agent_id, info in linked.items():
+        status = ""
+        if info.get("oauth_based") and info.get("linked"):
+            status = "[blue]OAUTH[/blue]"
+        elif info.get("linked"):
+            status = "[green]LINKED[/green]"
+        else:
+            status = "[red]NOT LINKED[/red]"
+        
+        table.add_row(
+            info.get("name", agent_id),
+            info.get("provider", ""),
+            status,
+            info.get("linked_at", "")[:16] if info.get("linked_at") else "-"
+        )
+    
+    console.print(table)
+
+
+@auth_app.command("link")
+def auth_link(
+    provider: str = typer.Argument(..., help="Provider to link (openai, anthropic, mistral, groq)"),
+    api_key: str = typer.Option(None, "--key", "-k", help="API key (will prompt if not provided)")
+):
+    """
+    Link an AI agent to your Gmail identity.
+    
+    The API key is encrypted and stored locally, tied to your Gmail.
+    
+    Example:
+        uap auth link openai
+        uap auth link anthropic --key sk-ant-xxx
+    """
+    from uap.oauth import UAPOAuth
+    from uap.vault import store_credential, get_linked_agents
+    
+    PROVIDERS = {
+        "openai": {"name": "GPT-4", "url": "https://platform.openai.com/api-keys"},
+        "anthropic": {"name": "Claude", "url": "https://console.anthropic.com/settings/keys"},
+        "mistral": {"name": "Mistral", "url": "https://console.mistral.ai/api-keys/"},
+        "groq": {"name": "Groq", "url": "https://console.groq.com/keys"},
+    }
+    
+    if provider.lower() == "gemini":
+        console.print("[cyan]Gemini is linked via OAuth (uap auth login), not API key[/cyan]")
+        return
+    
+    if provider.lower() not in PROVIDERS:
+        console.print(f"[red]Unknown provider: {provider}[/red]")
+        console.print(f"[dim]Available: {', '.join(PROVIDERS.keys())}[/dim]")
+        raise typer.Exit(1)
+    
+    # Check authentication
+    oauth = UAPOAuth()
+    if not oauth.is_authenticated():
+        console.print("[yellow]Please sign in first: uap auth login[/yellow]")
+        raise typer.Exit(1)
+    
+    creds = oauth.load_credentials()
+    user_info = oauth.get_user_info(creds)
+    email = user_info.get("email", "unknown")
+    
+    prov_info = PROVIDERS[provider.lower()]
+    
+    # Get API key
+    if not api_key:
+        console.print(f"\nTo link {prov_info['name']}, you need an API key from:")
+        console.print(f"[cyan]{prov_info['url']}[/cyan]\n")
+        api_key = typer.prompt("Enter API key", hide_input=True)
+    
+    if not api_key:
+        console.print("[red]API key required[/red]")
+        raise typer.Exit(1)
+    
+    # Store credential
+    success = store_credential(email, provider.lower(), api_key, {
+        "linked_via": "cli",
+        "user_email": email
+    })
+    
+    if success:
+        console.print(f"[green]✓ {prov_info['name']} linked to {email}[/green]")
+        console.print(f"[dim]Key encrypted and stored in ~/.uap/vault/[/dim]")
+    else:
+        console.print("[red]Failed to store credential[/red]")
+        raise typer.Exit(1)
+
+
+@auth_app.command("unlink")
+def auth_unlink(
+    provider: str = typer.Argument(..., help="Provider to unlink")
+):
+    """
+    Unlink an agent from your Gmail identity.
+    
+    Example:
+        uap auth unlink openai
+    """
+    from uap.oauth import UAPOAuth
+    from uap.vault import unlink_agent, get_linked_agents
+    
+    if provider.lower() == "gemini":
+        console.print("[yellow]Gemini is linked via OAuth. Use 'uap auth logout' to sign out.[/yellow]")
+        return
+    
+    oauth = UAPOAuth()
+    if not oauth.is_authenticated():
+        console.print("[yellow]Not signed in[/yellow]")
+        raise typer.Exit(1)
+    
+    creds = oauth.load_credentials()
+    user_info = oauth.get_user_info(creds)
+    email = user_info.get("email", "unknown")
+    
+    linked = get_linked_agents(email)
+    if not linked.get(provider.lower(), {}).get("linked"):
+        console.print(f"[yellow]{provider} is not linked[/yellow]")
+        return
+    
+    if unlink_agent(email, provider.lower()):
+        console.print(f"[green]✓ {provider} unlinked[/green]")
+    else:
+        console.print("[red]Failed to unlink[/red]")
+
+
+@auth_app.command("logout")
+def auth_logout():
+    """
+    Sign out and remove OAuth credentials.
+    
+    Note: Linked agent API keys are preserved.
+    
+    Example:
+        uap auth logout
+    """
+    from uap.oauth import UAPOAuth
+    
+    oauth = UAPOAuth()
+    
+    if not oauth.is_authenticated():
+        console.print("[yellow]Not signed in[/yellow]")
+        return
+    
+    oauth.logout()
+    console.print("[green]✓ Signed out[/green]")
+    console.print("[dim]Linked agent API keys are preserved[/dim]")
+
+
+@app.command()
+def federated(
+    task: str = typer.Argument(..., help="The task to accomplish"),
+    start: str = typer.Option(
+        "gemini",
+        "--start", "-s",
+        help="Starting agent (gemini, openai, anthropic, mistral, groq)"
+    ),
+    auto_handoff: bool = typer.Option(
+        True,
+        "--auto/--no-auto",
+        help="Enable automatic agent handoff"
+    ),
+    max_steps: int = typer.Option(
+        3,
+        "--max-steps", "-m",
+        help="Maximum handoff steps"
+    )
+):
+    """
+    Run a task using Gmail-federated agents.
+    
+    Uses real API calls to Claude, GPT, Gemini, etc. - all linked to your Gmail.
+    Agents share context via ACT (Agent Context Token) and can hand off to each other.
+    
+    Example:
+        uap federated "Analyze this code and suggest improvements"
+        uap federated "Write a REST API" --start openai --max-steps 4
+    """
+    from uap.oauth import UAPOAuth
+    from uap.vault import get_linked_agents, get_credential
+    from uap.dispatcher import Dispatcher
+    import hashlib
+    from datetime import datetime
+    
+    # Agent info
+    AGENT_INFO = {
+        "gemini": {"name": "Gemini", "model": "gemini-1.5-flash"},
+        "openai": {"name": "GPT-4", "model": "gpt-4-turbo"},
+        "anthropic": {"name": "Claude", "model": "claude-3-sonnet-20240229"},
+        "mistral": {"name": "Mistral", "model": "mistral-large-latest"},
+        "groq": {"name": "Groq", "model": "llama-3.1-70b-versatile"},
+    }
+    
+    # Check auth
+    oauth = UAPOAuth()
+    if not oauth.is_authenticated():
+        console.print("[yellow]Please sign in first: uap auth login[/yellow]")
+        raise typer.Exit(1)
+    
+    creds = oauth.load_credentials()
+    user_info = oauth.get_user_info(creds)
+    email = user_info.get("email", "unknown")
+    
+    console.print(f"[dim]Identity: {email}[/dim]\n")
+    
+    # Get linked agents
+    linked = get_linked_agents(email)
+    available = [aid for aid, info in linked.items() if info.get("linked")]
+    
+    if not available:
+        console.print("[red]No agents linked[/red]")
+        console.print("[dim]Link agents with: uap auth link openai[/dim]")
+        raise typer.Exit(1)
+    
+    if start not in available:
+        console.print(f"[red]{start} is not linked[/red]")
+        console.print(f"[dim]Available: {', '.join(available)}[/dim]")
+        raise typer.Exit(1)
+    
+    # Create ACT context
+    act_id = hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:12]
+    console.print(f"[cyan]ACT:{act_id}[/cyan] - Shared context initialized\n")
+    
+    # Run chain
+    dispatcher = Dispatcher(oauth_credentials=creds)
+    current = start
+    accumulated_context = ""
+    chain = []
+    
+    for step in range(max_steps):
+        if current not in available:
+            console.print(f"[yellow]{current} not linked, stopping[/yellow]")
+            break
+        
+        agent_name = linked[current]["name"]
+        console.print(f"[bold cyan]{step + 1}. {agent_name}[/bold cyan]")
+        
+        # Build prompt
+        other_agents = [AGENT_INFO[a]["name"] for a in available if a != current]
+        prompt = f"""You are {agent_name} working in a multi-agent UAP system.
+
+SHARED CONTEXT with: {', '.join(other_agents) if other_agents else 'None'}
+
+TASK: {task}
+
+CONTEXT FROM PREVIOUS AGENTS:
+{accumulated_context if accumulated_context else '(You are first in chain)'}
+
+Instructions:
+1. Provide your contribution
+2. If another agent's expertise would help, say: HANDOFF TO: [agent name]
+3. Available agents: {', '.join(other_agents)}
+
+Your response:"""
+        
+        # Call agent
+        with console.status(f"[green]{agent_name} processing..."):
+            try:
+                model = AGENT_INFO[current]["model"]
+                if current == "gemini":
+                    response = dispatcher._call_gemini(prompt, model)
+                elif current == "openai":
+                    response = dispatcher._call_openai(prompt, model, email)
+                elif current == "anthropic":
+                    response = dispatcher._call_anthropic(prompt, model, email)
+                elif current == "mistral":
+                    response = dispatcher._call_mistral(prompt, model, email)
+                elif current == "groq":
+                    response = dispatcher._call_groq(prompt, model)
+                else:
+                    response = f"Unknown backend: {current}"
+            except Exception as e:
+                response = f"Error: {e}"
+        
+        # Display response
+        console.print(Panel(
+            response[:500] + ("..." if len(response) > 500 else ""),
+            border_style="dim"
+        ))
+        
+        chain.append({"agent": current, "response": response})
+        accumulated_context += f"\n\n[{agent_name}]:\n{response}"
+        
+        # Check handoff
+        if auto_handoff and "HANDOFF TO:" in response.upper():
+            next_agent = None
+            for aid, info in linked.items():
+                if info.get("linked") and aid != current:
+                    if info["name"].upper() in response.upper():
+                        next_agent = aid
+                        break
+            
+            if next_agent:
+                next_name = linked[next_agent]["name"]
+                console.print(f"[yellow]→ Handoff to {next_name}[/yellow]\n")
+                current = next_agent
+                continue
+        
+        break
+    
+    # Summary
+    console.print(f"\n[bold green]✓ Complete[/bold green] - {len(chain)} agents processed")
+    console.print(f"[dim]ACT:{act_id} contains shared context from: {', '.join(c['agent'] for c in chain)}[/dim]")
 
 
 # =============================================================================

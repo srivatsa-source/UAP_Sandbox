@@ -18,9 +18,16 @@ config.yaml
 secrets.yaml
 *_key.txt
 *.key
+client_secrets.json
+credentials.json
 
 # UAP local data
 act_storage/
+local_outputs/
+user_data.json
+
+# UAP vault (contains encrypted API keys)
+vault/
 
 # IDE
 .vscode/
@@ -31,10 +38,4 @@ act_storage/
 # OS
 .DS_Store
 Thumbs.db
-
-user_data.json
-__pycache__/
-*.pyc
-local_outputs/
-.env
 
