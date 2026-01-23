@@ -1,0 +1,45 @@
+# UAP - Universal Agent Protocol
+# Unified requirements file - All dependencies in one place
+# Install with: pip install -r requirements.txt
+
+# ============================================
+# Core Dependencies
+# ============================================
+rich>=13.0.0          # Beautiful terminal output
+click>=8.0.0          # CLI framework
+pyyaml>=6.0           # YAML config parsing
+pydantic>=2.0.0       # Data validation
+requests>=2.28.0      # HTTP client
+python-dotenv>=1.0.0  # Environment variable loading
+
+# ============================================
+# LLM Backends (install what you need)
+# ============================================
+groq>=0.4.0                  # Groq API (free tier, fast)
+google-generativeai>=0.3.0   # Google Gemini
+openai>=1.0.0                # OpenAI GPT
+anthropic>=0.18.0            # Anthropic Claude
+httpx>=0.24.0                # Async HTTP (used by some SDKs)
+
+# ============================================
+# Google OAuth (optional - for Gemini OAuth flow)
+# ============================================
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.0.0
+
+# ============================================
+# Dashboard Dependencies
+# ============================================
+streamlit>=1.30.0     # Web dashboard
+pandas>=2.0.0         # Data handling
+numpy>=1.24.0         # Numerical operations
+jsonschema>=4.19.0    # JSON validation
+
+# ============================================
+# Development (optional)
+# ============================================
+# pytest>=7.0.0
+# black>=23.0.0
+# ruff>=0.1.0

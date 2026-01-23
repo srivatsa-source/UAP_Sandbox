@@ -20,7 +20,7 @@ class AgentConfig:
         agent_id: str,
         agent_type: str,
         system_prompt: str,
-        model: str = "llama3-8b-8192",  # Default Groq model
+        model: str = "llama-3.3-70b-versatile",  # Updated Groq model
         backend: str = "groq"  # "groq" or "ollama"
     ):
         self.agent_id = agent_id
@@ -467,6 +467,51 @@ class Dispatcher:
     def validate_handshake(self, session_id: str) -> dict:
         """Validate that a proper ACT handshake occurred."""
         return self.state_manager.validate_handshake(session_id)
+
+    # =========================================================================
+    # CONVENIENCE METHODS FOR SIMPLIFIED USAGE
+    # =========================================================================
+    
+    def start_session(self, objective: str = "") -> "ACT":
+        """
+        Start a new UAP session with an optional objective.
+        Returns the ACT for the new session.
+        """
+        return self.state_manager.create_session(objective)
+    
+    def dispatch_task(
+        self,
+        session_id: str,
+        task: str,
+        agent_id: str = "planner",
+        auto_handoff: bool = False
+    ) -> dict:
+        """
+        Simplified task dispatch - sends a task to an agent and returns the result.
+        
+        Args:
+            session_id: The session to use
+            task: The task/prompt to send
+            agent_id: Which agent to use (default: planner)
+            auto_handoff: Whether to auto-handoff to next agent
+        
+        Returns:
+            Dict with 'answer', 'state_updates', 'session_id'
+        """
+        result = self.dispatch(
+            agent_id=agent_id,
+            session_id=session_id,
+            task=task,
+            auto_handoff=auto_handoff
+        )
+        
+        # Return simplified result
+        return {
+            "answer": result.get("response", "No response"),
+            "state_updates": result.get("act", {}).get("context_summary", ""),
+            "session_id": result.get("session_id", session_id),
+            "handoff_info": result.get("handoff_info")
+        }
 
 
 # =============================================================================

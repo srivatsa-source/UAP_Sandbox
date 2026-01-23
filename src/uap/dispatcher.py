@@ -190,23 +190,26 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
             })
     
     def _call_gemini(self, prompt: str, model: str) -> str:
-        """Call Google Gemini API using OAuth credentials."""
-        if not self.oauth_credentials:
+        """Call Google Gemini API using API key (OAuth is for user identity only)."""
+        import os
+        from uap.config import get_config
+        
+        # Get API key from config or environment (supports UAP_GEMINI_KEY from GitHub secrets)
+        config = get_config()
+        api_key = config.get("google_api_key") or os.getenv("GOOGLE_API_KEY") or os.getenv("UAP_GEMINI_KEY")
+        
+        if not api_key:
             return json.dumps({
-                "answer": "ERROR: Not authenticated. Run 'uap-cli login' first.",
-                "state_updates": {"context_summary": "Authentication required"}
+                "answer": "ERROR: GOOGLE_API_KEY not set. Run: uap config set google_api_key <your-key>\n"
+                          "Get your key from: https://aistudio.google.com/app/apikey",
+                "state_updates": {"context_summary": "Gemini API key required"}
             })
         
         try:
             import google.generativeai as genai
-            from google.auth.transport.requests import Request
             
-            # Refresh credentials if needed
-            if self.oauth_credentials.expired and self.oauth_credentials.refresh_token:
-                self.oauth_credentials.refresh(Request())
-            
-            # Configure with OAuth token
-            genai.configure(credentials=self.oauth_credentials)
+            # Configure with API key (not OAuth credentials)
+            genai.configure(api_key=api_key)
             
             gen_model = genai.GenerativeModel(model)
             response = gen_model.generate_content(prompt)

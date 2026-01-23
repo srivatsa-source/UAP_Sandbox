@@ -28,9 +28,10 @@ def get_config() -> dict:
     # Default config
     config = {
         "groq_api_key": os.getenv("GROQ_API_KEY", ""),
+        "google_api_key": os.getenv("GOOGLE_API_KEY") or os.getenv("UAP_GEMINI_KEY", ""),
         "ollama_url": "http://localhost:11434",
         "default_backend": "groq",
-        "default_model": "llama-3.1-8b-instant",
+        "default_model": "llama-3.3-70b-versatile",
     }
     
     # Load from file if exists
@@ -45,6 +46,8 @@ def get_config() -> dict:
     # Environment variables override file config
     if os.getenv("GROQ_API_KEY"):
         config["groq_api_key"] = os.getenv("GROQ_API_KEY")
+    if os.getenv("GOOGLE_API_KEY") or os.getenv("UAP_GEMINI_KEY"):
+        config["google_api_key"] = os.getenv("GOOGLE_API_KEY") or os.getenv("UAP_GEMINI_KEY")
     
     return config
 

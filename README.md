@@ -4,17 +4,64 @@
 
 UAP is like "Segment for AI Agents" – it standardizes LLM-to-LLM data transfer using a persistent **State Packet** (Agent Context Token - ACT) so agents can hand off work without losing context or re-prompting users.
 
+## Installation
+
+### Option 1: pip install (Recommended)
+
+```bash
+# Basic install
+pip install uap-protocol
+
+# With dashboard (web UI)
+pip install uap-protocol[dashboard]
+
+# Full install (all LLM backends)
+pip install uap-protocol[all]
+```
+
+After installing, run from anywhere:
+
+```bash
+uap-run              # Interactive menu
+uap-run dashboard    # Web dashboard with stats
+uap-run chat         # CLI chat mode
+uap-run --setup      # First-time setup
+```
+
+### Option 2: From source
+
+```bash
+# Clone and install
+git clone https://github.com/uap-protocol/uap.git
+cd uap
+pip install -r requirements.txt
+
+# Run with local script
+python run.py              # Interactive menu
+python run.py dashboard    # Web dashboard
+python run.py --setup      # Setup wizard
+```
+
+### Windows Users
+
+```powershell
+# After cloning, use the batch launcher:
+.\uap.bat              # Interactive menu
+.\uap.bat dashboard    # Web dashboard
+.\uap.bat --setup      # Setup wizard
+```
+
 ## Quick Start
 
 ```bash
-# Install UAP
-pip install -e .
+# 1. Setup (choose LLM backend, enter API key)
+uap-run --setup
 
-# Set your API key
-uap config set groq_api_key gsk_your_key_here
+# 2. Launch dashboard
+uap-run dashboard
 
-# Run a task with multiple agents
-uap new "Build a REST API endpoint for user authentication" --agents planner,coder,reviewer --auto
+# 3. Or use CLI
+uap-run chat
 ```
 
 ## How It Works
@@ -40,6 +87,28 @@ uap new "Build a REST API endpoint for user authentication" --agents planner,cod
 │ All agents   │                             │ Reviews &    │
 │ contributed  │                             │ approves     │
 └──────────────┘                             └──────────────┘
+```
+
+## Dashboard Features
+
+- **💬 Chat Interface** - Interactive task console with agent handoffs
+- **📊 Stats Page** - Usage analytics, agent breakdown, session history
+- **🔄 Auto-Handoff** - Automatic agent chaining for complex tasks
+- **💾 State Export** - Save sessions as JSON for later use
+
+## Alternative: Package Commands
+
+If you prefer, you can also install UAP as a package and use the CLI commands:
+
+```bash
+# Install UAP as package
+pip install -e .
+
+# Set your API key
+uap config set groq_api_key gsk_your_key_here
+
+# Run a task with multiple agents
+uap new "Build a REST API endpoint for user authentication" --agents planner,coder,reviewer --auto
 ```
 
 ## Commands

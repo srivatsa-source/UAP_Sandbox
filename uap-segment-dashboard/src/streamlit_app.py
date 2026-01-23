@@ -656,6 +656,246 @@ VALIDATORS = {
 }
 
 # =============================================================================
+# STATS PAGE - Usage Analytics Dashboard
+# =============================================================================
+
+def render_stats_page():
+    """Render usage statistics dashboard in retro terminal style."""
+    from collections import Counter
+    
+    st.markdown("""
+    <div style="
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 30px;
+    ">
+        <span style="font-size: 2rem;">📊</span>
+        <div>
+            <div style="color: #d0d0d0; font-size: 1.5rem; letter-spacing: 3px; font-family: 'VT323', monospace;">USAGE STATS</div>
+            <div style="color: #3a3a3a; font-size: 0.75rem; letter-spacing: 2px;">SYSTEM ANALYTICS</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Load all ACT session files
+    act_dir = UAP_ROOT / "act_storage"
+    act_files = list(act_dir.glob("*.json")) if act_dir.exists() else []
+    
+    sessions = []
+    for f in act_files:
+        try:
+            data = json.loads(f.read_text())
+            sessions.append(data)
+        except:
+            pass
+    
+    if not sessions:
+        st.markdown("""
+        <div class="console-box" style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 3rem; margin-bottom: 15px; opacity: 0.3;">📭</div>
+            <div style="color: #505050; font-size: 1.1rem; letter-spacing: 2px; margin-bottom: 10px;">NO DATA YET</div>
+            <div style="color: #3a3a3a; font-size: 0.8rem;">Run some tasks to see your stats</div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+    
+    # Calculate stats
+    total_sessions = len(sessions)
+    total_tasks = sum(len(s.get("task_chain", [])) for s in sessions)
+    total_handoffs = sum(len(s.get("handshake_log", [])) for s in sessions)
+    
+    # Agent usage counter
+    agent_counts = Counter()
+    for s in sessions:
+        for log in s.get("handshake_log", []):
+            agent = log.get("agent", "unknown")
+            # Clean up agent names
+            agent_name = agent.split("_")[0] if "_" in agent else agent
+            agent_counts[agent_name] += 1
+    
+    # Provider usage
+    provider_counts = Counter()
+    for s in sessions:
+        for log in s.get("handshake_log", []):
+            agent = log.get("agent", "")
+            if "_" in agent:
+                provider = agent.split("_")[1] if len(agent.split("_")) > 1 else "unknown"
+                provider_counts[provider] += 1
+    
+    # ===== OVERVIEW METRICS =====
+    st.markdown("### 〉OVERVIEW")
+    
+    c1, c2, c3, c4 = st.columns(4)
+    
+    metrics = [
+        ("SESSIONS", total_sessions, "📁"),
+        ("TASKS", total_tasks, "✅"),
+        ("HANDOFFS", total_handoffs, "🔄"),
+        ("AVG/SESSION", round(total_tasks / max(total_sessions, 1), 1), "📈"),
+    ]
+    
+    for col, (label, value, icon) in zip([c1, c2, c3, c4], metrics):
+        with col:
+            st.markdown(f"""
+            <div class="console-box" style="text-align: center; padding: 20px;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px; opacity: 0.7;">{icon}</div>
+                <div style="color: #d0d0d0; font-size: 2.5rem; font-family: 'VT323', monospace; line-height: 1;">{value}</div>
+                <div style="color: #505050; font-size: 0.7rem; letter-spacing: 2px; margin-top: 8px;">{label}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # ===== AGENT USAGE =====
+    col_left, col_right = st.columns([1.2, 1])
+    
+    with col_left:
+        st.markdown("### 〉AGENT USAGE")
+        
+        if agent_counts:
+            total_agent_calls = sum(agent_counts.values())
+            
+            st.markdown('<div class="console-box" style="padding: 20px;">', unsafe_allow_html=True)
+            
+            for agent, count in agent_counts.most_common(6):
+                pct = int(count / total_agent_calls * 100)
+                bar_width = max(pct, 5)  # Minimum bar width
+                
+                st.markdown(f"""
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                        <span style="color: #a0a0a0; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase;">{agent}</span>
+                        <span style="color: #707070; font-size: 0.85rem;">{count} <span style="color: #3a3a3a;">({pct}%)</span></span>
+                    </div>
+                    <div style="background: #151515; height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="
+                            background: linear-gradient(90deg, #3a3a3a 0%, #505050 100%);
+                            width: {bar_width}%;
+                            height: 100%;
+                            border-radius: 4px;
+                            transition: width 0.5s ease;
+                        "></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="console-box" style="text-align: center; padding: 40px; color: #3a3a3a;">
+                No agent data available
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col_right:
+        st.markdown("### 〉PROVIDERS")
+        
+        if provider_counts:
+            st.markdown('<div class="console-box" style="padding: 20px;">', unsafe_allow_html=True)
+            
+            for provider, count in provider_counts.most_common(5):
+                st.markdown(f"""
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 12px 0;
+                    border-bottom: 1px solid #1a1a1a;
+                ">
+                    <span style="color: #a0a0a0; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase;">{provider}</span>
+                    <span style="
+                        background: #1a1a1a;
+                        color: #707070;
+                        padding: 4px 12px;
+                        font-size: 0.8rem;
+                        font-family: 'VT323', monospace;
+                    ">{count}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="console-box" style="text-align: center; padding: 40px; color: #3a3a3a;">
+                No provider data
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # ===== RECENT SESSIONS =====
+    st.markdown("### 〉RECENT SESSIONS")
+    
+    sorted_sessions = sorted(sessions, key=lambda x: x.get("updated_at", ""), reverse=True)[:8]
+    
+    st.markdown('<div class="console-box" style="padding: 15px;">', unsafe_allow_html=True)
+    
+    for s in sorted_sessions:
+        obj = s.get("current_objective", "No objective")
+        obj_display = (obj[:50] + "...") if len(obj) > 50 else obj
+        sid = s.get("session_id", "???")
+        tasks = len(s.get("task_chain", []))
+        handoffs = len(s.get("handshake_log", []))
+        updated = s.get("updated_at", "")[:10]
+        
+        st.markdown(f"""
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #0f0f0f;
+            border: 1px solid #1a1a1a;
+            border-radius: 4px;
+        ">
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                    <span style="color: #3a3a3a; font-family: monospace; font-size: 0.75rem;">[{sid}]</span>
+                    <span style="color: #505050; font-size: 0.7rem;">{updated}</span>
+                </div>
+                <div style="color: #707070; font-size: 0.85rem;">{obj_display}</div>
+            </div>
+            <div style="display: flex; gap: 15px; color: #3a3a3a; font-size: 0.75rem;">
+                <span>📝 {tasks}</span>
+                <span>🔄 {handoffs}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # ===== ARTIFACTS SUMMARY =====
+    st.markdown("### 〉ARTIFACTS")
+    
+    total_code = sum(len(s.get("artifacts", {}).get("code_snippets", [])) for s in sessions)
+    total_decisions = sum(len(s.get("artifacts", {}).get("decisions", [])) for s in sessions)
+    total_files = sum(len(s.get("artifacts", {}).get("files_modified", [])) for s in sessions)
+    
+    art_c1, art_c2, art_c3 = st.columns(3)
+    
+    artifact_metrics = [
+        ("CODE SNIPPETS", total_code, "💻"),
+        ("DECISIONS", total_decisions, "🎯"),
+        ("FILES MODIFIED", total_files, "📄"),
+    ]
+    
+    for col, (label, value, icon) in zip([art_c1, art_c2, art_c3], artifact_metrics):
+        with col:
+            st.markdown(f"""
+            <div class="console-box" style="text-align: center; padding: 20px;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <span style="font-size: 1.2rem; opacity: 0.7;">{icon}</span>
+                    <span style="color: #d0d0d0; font-size: 1.8rem; font-family: 'VT323', monospace;">{value}</span>
+                </div>
+                <div style="color: #505050; font-size: 0.7rem; letter-spacing: 1px; margin-top: 8px;">{label}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+# =============================================================================
 # SESSION STATE
 # =============================================================================
 
@@ -664,7 +904,8 @@ def init_state():
         "step": "login", "email": "", "api_keys": {}, "providers": {},
         "agent_config": {}, "messages": [], "state_mgr": None, "dispatcher": None,
         "act": None, "session": None, "transfers": [], "auto_handoff": True,
-        "current_task": "", "processing": False, "boot_done": False
+        "current_task": "", "processing": False, "boot_done": False,
+        "page": "main"  # "main" or "stats"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -927,6 +1168,20 @@ def render_sidebar():
         st.session_state.auto_handoff = st.checkbox("AUTO-HANDOFF", value=st.session_state.auto_handoff)
         
         st.markdown("---")
+        
+        # Navigation buttons
+        st.caption("NAVIGATE")
+        nav_col1, nav_col2 = st.columns(2)
+        with nav_col1:
+            if st.button("📊 STATS", use_container_width=True):
+                st.session_state.page = "stats"
+                st.rerun()
+        with nav_col2:
+            if st.button("💬 CHAT", use_container_width=True):
+                st.session_state.page = "main"
+                st.rerun()
+        
+        st.markdown("---")
         c1, c2 = st.columns(2)
         with c1:
             if st.button("NEW", use_container_width=True):
@@ -1168,7 +1423,11 @@ def main():
         render_connect()
     elif st.session_state.step == "main":
         render_sidebar()
-        render_main()
+        # Route to appropriate page
+        if st.session_state.get("page") == "stats":
+            render_stats_page()
+        else:
+            render_main()
 
 if __name__ == "__main__":
     main()
