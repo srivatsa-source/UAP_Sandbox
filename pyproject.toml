@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "uap-protocol"
-version = "0.3.0"
-description = "Universal Agent Protocol - Connect AI agents, share state, run tasks from your terminal"
+version = "0.4.0"
+description = "Universal Agent Protocol - AI agent interoperability with 11 LLM backends, local model management, and MCP server"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
     {name = "UAP Contributors"}
 ]
-keywords = ["ai", "agents", "llm", "protocol", "automation", "groq", "ollama", "gemini", "claude"]
+keywords = ["ai", "agents", "llm", "protocol", "automation", "groq", "ollama", "gemini", "claude", "lmstudio", "vllm", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -76,7 +76,6 @@ dev = [
 
 [project.scripts]
 uap = "uap.cli:app"
-uap-cli = "uap.uap_cli:main"
 uap-dashboard = "uap.dashboard:main"
 uap-run = "uap.launcher:main"
 uap-mcp = "uap.mcp_server:main"

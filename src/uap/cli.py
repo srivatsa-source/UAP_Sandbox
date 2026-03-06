@@ -43,11 +43,13 @@ agents_app = typer.Typer(help="Manage agents")
 config_app = typer.Typer(help="Manage configuration")
 sessions_app = typer.Typer(help="Manage sessions")
 auth_app = typer.Typer(help="Authentication & agent linking")
+local_app = typer.Typer(help="Local model management")
 
 app.add_typer(agents_app, name="agents")
 app.add_typer(config_app, name="config")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(auth_app, name="auth")
+app.add_typer(local_app, name="local")
 
 
 @app.callback(invoke_without_command=True)
@@ -830,6 +832,70 @@ Your response:"""
     # Summary
     console.print(f"\n[bold green]✓ Complete[/bold green] - {len(chain)} agents processed")
     console.print(f"[dim]ACT:{act_id} contains shared context from: {', '.join(c['agent'] for c in chain)}[/dim]")
+
+
+# =============================================================================
+# LOCAL MODEL COMMANDS
+# =============================================================================
+
+@local_app.command("status")
+def local_status():
+    """Show status of all local LLM backends."""
+    from uap.local_models import LocalModelManager
+    mgr = LocalModelManager()
+    info = mgr.get_status()
+
+    table = Table(title="Local LLM Backends")
+    table.add_column("Backend", style="cyan")
+    table.add_column("URL", style="dim")
+    table.add_column("Status")
+    table.add_column("Latency", justify="right")
+    table.add_column("Models", justify="right")
+
+    for bid, data in info["backends"].items():
+        status_str = "[green]online[/green]" if data["online"] else "[red]offline[/red]"
+        latency_str = f"{data['latency_ms']}ms" if data["online"] else "-"
+        models_str = str(len(data["models"])) if data["online"] else "-"
+        table.add_row(bid, data["url"], status_str, latency_str, models_str)
+
+    console.print(table)
+    console.print(f"\n[bold]{info['online_count']}[/bold] backend(s) online, [bold]{info['total_models']}[/bold] model(s) available")
+
+
+@local_app.command("models")
+def local_models(
+    backend: str = typer.Argument(None, help="Backend ID (ollama, lmstudio, llamacpp, vllm). Omit for all."),
+):
+    """List models available on local backends."""
+    from uap.local_models import LocalModelManager, BACKENDS
+    mgr = LocalModelManager()
+
+    targets = [backend] if backend else list(BACKENDS.keys())
+    for bid in targets:
+        if bid not in BACKENDS:
+            console.print(f"[red]Unknown backend:[/red] {bid}")
+            continue
+        models = mgr.list_models(bid)
+        if models:
+            console.print(f"\n[cyan]{BACKENDS[bid]['name']}[/cyan]")
+            for m in models:
+                console.print(f"  • {m}")
+        else:
+            console.print(f"\n[dim]{BACKENDS[bid]['name']}[/dim] — no models (offline or empty)")
+
+
+@local_app.command("health")
+def local_health():
+    """Run health checks on all local LLM backends."""
+    from uap.local_models import LocalModelManager
+    mgr = LocalModelManager()
+    results = mgr.discover()
+
+    for st in results:
+        if st.online:
+            console.print(f"[green]✓[/green] {st.name} ({st.url}) — {st.latency_ms:.0f}ms, {len(st.models)} model(s)")
+        else:
+            console.print(f"[red]✗[/red] {st.name} ({st.url}) — {st.error}")
 
 
 # =============================================================================

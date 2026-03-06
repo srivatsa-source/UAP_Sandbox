@@ -1,6 +1,6 @@
 # UAP OAuth Integration
 
-This guide explains how to use Gmail OAuth authentication with UAP.
+Google OAuth integration for user identity and Gemini authentication.
 
 ## Prerequisites
 
@@ -12,23 +12,21 @@ This guide explains how to use Gmail OAuth authentication with UAP.
 ### 1. Create Google Cloud OAuth Credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the following APIs:
-   - **Google+ API** (for user profile info)
-   - **Generative Language API** (for Gemini, if using)
+2. Create or select a project  
+3. Enable **Google+ API** and **Generative Language API** (for Gemini)
 4. Go to **Credentials** → **Create Credentials** → **OAuth Client ID**
-5. Select **Desktop app** for CLI usage
+5. Select **Desktop app**
 6. Download the credentials or note the Client ID and Secret
 
-### 2. Configure UAP with your credentials
+### 2. Configure UAP
 
 Run the interactive setup:
 
 ```bash
-uap-cli setup
+uap-run --setup
 ```
 
-Or manually create `~/.uap/client_secrets.json`:
+Or manually place `client_secrets.json` at `~/.uap/client_secrets.json`:
 
 ```json
 {
@@ -47,53 +45,37 @@ Or manually create `~/.uap/client_secrets.json`:
 ### Login
 
 ```bash
-uap-cli login
+uap auth login
 ```
 
-This opens a browser window for Google OAuth consent. After authentication, credentials are saved to `~/.uap/credentials.json`.
+Opens a browser for Google OAuth consent. Credentials are saved to `~/.uap/credentials.json`.
 
 ### Check Current User
 
 ```bash
-uap-cli whoami
-```
-
-### Start a New Task
-
-```bash
-uap-cli new "Build a REST API with FastAPI" --agents planner,coder
-```
-
-### Auto-chain Agents
-
-```bash
-uap-cli new "Create a CLI tool" --agents planner,coder,reviewer --auto
-```
-
-### View Sessions
-
-```bash
-uap-cli sessions
-```
-
-### Check Status
-
-```bash
-uap-cli status
+uap auth whoami
 ```
 
 ### Logout
 
 ```bash
-uap-cli logout
+uap auth logout
+```
+
+### Start a Task
+
+```bash
+uap new "Build a REST API with FastAPI" --agents planner,coder --auto
 ```
 
 ## Web Portal
 
-### Run the OAuth-enabled Streamlit App
+Run the OAuth-enabled Streamlit dashboard:
 
 ```bash
-streamlit run uap-segment-dashboard/src/oauth_app.py
+uap-dashboard
+# or
+streamlit run src/uap/dashboard/oauth_app.py
 ```
 
 The portal will:
@@ -117,18 +99,19 @@ The portal will:
 └──────────────┘     └──────────────┘
 ```
 
-## Files Created
+## Key Files
 
 | File | Purpose |
 |------|---------|
 | `src/uap/oauth.py` | OAuth authentication module |
-| `src/uap/uap_cli.py` | Click-based CLI tool |
-| `uap-segment-dashboard/src/oauth_app.py` | Streamlit OAuth web portal |
-| `requirements-oauth.txt` | OAuth-specific dependencies |
+| `src/uap/cli.py` | Typer CLI (`uap auth login/whoami/logout`) |
+| `src/uap/dashboard/oauth_app.py` | Streamlit OAuth web portal |
+| `src/uap/vault.py` | Fernet-encrypted secret storage |
 
 ## Security Notes
 
 - Credentials are stored locally in `~/.uap/credentials.json`
+- API keys are encrypted at rest via the Fernet vault (`~/.uap/vault.enc`)
 - Refresh tokens enable persistent sessions
-- Use `uap-cli logout` to clear credentials
+- Use `uap auth logout` to clear credentials
 - Never commit `credentials.json` or `client_secrets.json` to version control

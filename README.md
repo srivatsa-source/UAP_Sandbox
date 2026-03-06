@@ -1,240 +1,220 @@
-# UAP - Universal Agent Protocol
+# UAP — Universal Agent Protocol
 
-**Connect AI agents, share state, run tasks from your terminal.**
+[![PyPI](https://img.shields.io/pypi/v/uap-protocol)](https://pypi.org/project/uap-protocol/)
+[![Python](https://img.shields.io/pypi/pyversions/uap-protocol)](https://pypi.org/project/uap-protocol/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-UAP is like "Segment for AI Agents" – it standardizes LLM-to-LLM data transfer using a persistent **State Packet** (Agent Context Token - ACT) so agents can hand off work without losing context or re-prompting users.
+**The open standard for AI-agent interoperability.**
+
+UAP standardises LLM-to-LLM data transfer through a persistent **Agent Context Token (ACT)** so agents can hand off work without losing context or re-prompting users. Think of it as *Segment for AI Agents*.
+
+---
+
+## Features
+
+| Capability | Details |
+|---|---|
+| **11 LLM backends** | Groq, Gemini, OpenAI, Anthropic, Mistral, Together, OpenRouter, Ollama, LM Studio, llama.cpp, vLLM |
+| **Local model management** | Auto-discover & monitor Ollama, LM Studio, llama.cpp, vLLM with one command |
+| **ACT state protocol** | Portable JSON state packet that travels between agents |
+| **Agent handoff & chaining** | Automatic multi-agent pipelines with full history |
+| **Segment-style telemetry** | JSONL event logging with per-agent analytics |
+| **Handoff visualiser** | Graphviz DAG, Plotly timeline, ASCII trace |
+| **Fernet vault** | Encrypted secret storage for API keys |
+| **MCP server** | 8 tools exposed over Model Context Protocol (stdio) |
+| **Streamlit dashboard** | Chat, analytics, session management in a web UI |
+| **OAuth identity** | Google OAuth for user identity & Gemini auth |
+
+---
 
 ## Installation
 
-### Option 1: pip install (Recommended)
-
 ```bash
-# Basic install
+# Core install
 pip install uap-protocol
 
-# With dashboard (web UI)
+# With web dashboard
 pip install uap-protocol[dashboard]
 
-# Full install (all LLM backends)
+# Everything (all optional backends + MCP)
 pip install uap-protocol[all]
 ```
 
-After installing, run from anywhere:
+### From source
 
 ```bash
-uap-run              # Interactive menu
-uap-run dashboard    # Web dashboard with stats
-uap-run chat         # CLI chat mode
-uap-run --setup      # First-time setup
+git clone https://github.com/srivatsa-source/UAP_Sandbox.git
+cd UAP_Sandbox/uap-protocol
+pip install -e ".[dev]"
 ```
 
-### Option 2: From source
-
-```bash
-# Clone and install
-git clone https://github.com/uap-protocol/uap.git
-cd uap
-pip install -r requirements.txt
-
-# Run with local script
-python run.py              # Interactive menu
-python run.py dashboard    # Web dashboard
-python run.py --setup      # Setup wizard
-```
-
-### Windows Users
-
-```powershell
-# After cloning, use the batch launcher:
-.\uap.bat              # Interactive menu
-.\uap.bat dashboard    # Web dashboard
-.\uap.bat --setup      # Setup wizard
-```
+---
 
 ## Quick Start
 
 ```bash
-# 1. Setup (choose LLM backend, enter API key)
+# 1. First-time setup — choose backend, enter API key
 uap-run --setup
 
-# 2. Launch dashboard
-uap-run dashboard
+# 2. Create a task & let agents collaborate
+uap new "Build a REST API with auth" --agents planner,coder,reviewer --auto
 
-# 3. Or use CLI
-uap-run chat
+# 3. Launch the web dashboard
+uap-run dashboard
 ```
+
+---
 
 ## How It Works
 
-1. **You submit a task** → UAP creates an ACT (Agent Context Token)
-2. **Agent A processes** → Updates the ACT with context, decisions, artifacts
-3. **Handoff to Agent B** → Agent B reads ACT and continues WITHOUT re-prompting you
-4. **Chain continues** → Each agent adds to the shared state
-5. **Task completes** → Full history preserved in ACT
-
 ```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│   Planner    │────▶│  Shared State   │────▶│    Coder     │
-│              │     │     (ACT)       │     │              │
-│ Breaks down  │     │                 │     │ Implements   │
-│ the task     │     │ • Objective     │     │ the code     │
-└──────────────┘     │ • Context       │     └──────────────┘
-                     │ • Artifacts     │            │
-                     │ • Decisions     │            ▼
-┌──────────────┐     │ • Task Chain    │     ┌──────────────┐
-│   Complete   │◀────│                 │◀────│   Reviewer   │
-│              │     └─────────────────┘     │              │
-│ All agents   │                             │ Reviews &    │
-│ contributed  │                             │ approves     │
-└──────────────┘                             └──────────────┘
+ You ──▶ Task
+          │
+          ▼
+   ┌────────────┐      ┌──────────────────────┐      ┌────────────┐
+   │  Planner   │─────▶│   ACT (State Packet)  │─────▶│   Coder    │
+   │            │      │                        │      │            │
+   │ Breaks down│      │ • objective            │      │ Implements │
+   │ the task   │      │ • context_summary      │      │ the code   │
+   └────────────┘      │ • task_chain           │      └────────────┘
+                       │ • artifacts            │            │
+                       │ • handoff_reason       │            ▼
+   ┌────────────┐      │ • next_agent_hint      │      ┌────────────┐
+   │  Complete  │◀─────│                        │◀─────│  Reviewer  │
+   └────────────┘      └──────────────────────┘      └────────────┘
 ```
 
-## Dashboard Features
+1. **Submit a task** → UAP creates an ACT  
+2. **Agent A processes** → updates the ACT with context, decisions, artifacts  
+3. **Handoff** → Agent B reads the ACT and continues seamlessly  
+4. **Chain continues** → each agent enriches the shared state  
+5. **Done** → full history preserved in the ACT  
 
-- **💬 Chat Interface** - Interactive task console with agent handoffs
-- **📊 Stats Page** - Usage analytics, agent breakdown, session history
-- **🔄 Auto-Handoff** - Automatic agent chaining for complex tasks
-- **💾 State Export** - Save sessions as JSON for later use
+---
 
-## Alternative: Package Commands
+## CLI Reference
 
-If you prefer, you can also install UAP as a package and use the CLI commands:
+UAP exposes three entry points:
+
+| Command | Purpose |
+|---|---|
+| `uap` | Primary Typer CLI — session, agent, config, auth, local model commands |
+| `uap-run` | Interactive launcher — menu-driven setup, dashboard, chat |
+| `uap-dashboard` | Streamlit web dashboard |
+
+### Sessions
 
 ```bash
-# Install UAP as package
-pip install -e .
-
-# Set your API key
-uap config set groq_api_key gsk_your_key_here
-
-# Run a task with multiple agents
-uap new "Build a REST API endpoint for user authentication" --agents planner,coder,reviewer --auto
+uap new "Your task" --agents planner,coder,reviewer       # Start session
+uap new "Build a login page" --agents planner,coder --auto # Auto-chain
+uap run <session_id> --agent coder                         # Continue session
+uap status <session_id>                                    # Check progress
+uap sessions list                                          # List all
+uap sessions export <session_id> -o out.json               # Export
 ```
 
-## Commands
-
-### Session Management
+### Agents
 
 ```bash
-# Start new session
-uap new "Your task description" --agents planner,coder,reviewer
-
-# Auto-chain all agents
-uap new "Build a login page" --agents planner,coder,reviewer --auto
-
-# Continue existing session
-uap run abc123 --agent coder
-
-# Check session status
-uap status abc123
-
-# List all sessions
-uap sessions list
-
-# Export session
-uap sessions export abc123 -o my-session.json
-```
-
-### Agent Management
-
-```bash
-# List available agents
-uap agents list
-
-# Install agent from GitHub
-uap agents add github:awesome-dev/fastapi-agent
-uap agents add user/repo-name
-
-# Remove installed agent
-uap agents remove my-agent
-
-# Get agent details
-uap agents info coder
-
-# Search GitHub for agents
-uap agents search "python fastapi"
+uap agents list                          # Built-in + installed agents
+uap agents info coder                    # Agent details
+uap agents add github:user/repo          # Install from GitHub
+uap agents remove my-agent               # Remove
+uap agents search "python fastapi"       # Search GitHub
 ```
 
 ### Configuration
 
 ```bash
-# Set API key
-uap config set groq_api_key gsk_xxx
+uap config list                           # View all settings
+uap config set groq_api_key gsk_xxx       # Set a key
+uap config set default_backend ollama     # Switch backend
+uap config path                           # Show config file location
+```
 
-# Set default backend
+### Local Models
+
+```bash
+uap local status                          # All backends: online/offline, model counts
+uap local models                          # List models across all backends
+uap local models ollama                   # List models on a specific backend
+uap local health                          # Health-check every backend with latency
+```
+
+### Authentication
+
+```bash
+uap auth login                            # Google OAuth login
+uap auth whoami                           # Current identity
+uap auth logout                           # Clear credentials
+```
+
+---
+
+## Supported Backends
+
+### Cloud
+
+| Backend | Config key | Notes |
+|---|---|---|
+| Groq | `groq_api_key` | Default, fast free tier |
+| Google Gemini | `gemini_api_key` | Also supports OAuth |
+| OpenAI | `openai_api_key` | GPT-4o, o1, etc. |
+| Anthropic | `anthropic_api_key` | Claude models |
+| Mistral | `mistral_api_key` | |
+| Together | `together_api_key` | |
+| OpenRouter | `openrouter_api_key` | Multi-provider router |
+
+### Local
+
+| Backend | Default URL | Config key |
+|---|---|---|
+| Ollama | `http://localhost:11434` | `ollama_url` |
+| LM Studio | `http://localhost:1234` | `lmstudio_url` |
+| llama.cpp | `http://localhost:8080` | `llamacpp_url` |
+| vLLM | `http://localhost:8000` | `vllm_url` |
+
+```bash
+# Switch to a local backend
 uap config set default_backend ollama
 
-# Set Ollama URL
-uap config set ollama_url http://localhost:11434
-
-# View all config
-uap config list
-
-# Show config file location
-uap config path
+# Override the default URL
+uap config set lmstudio_url http://192.168.1.50:1234
 ```
+
+---
 
 ## Built-in Agents
 
-| Agent | Type | Description |
-|-------|------|-------------|
+| Agent | Type | Role |
+|---|---|---|
 | `planner` | planner | Breaks down tasks, creates roadmaps |
 | `coder` | coder | Writes production-ready code |
-| `reviewer` | reviewer | Reviews code for bugs and improvements |
+| `reviewer` | reviewer | Reviews code for bugs & improvements |
 | `debugger` | debugger | Diagnoses and fixes issues |
-| `designer` | designer | Creates UI/UX specs and visual designs |
-| `documenter` | documenter | Writes documentation and READMEs |
+| `designer` | designer | UI/UX specs and visual design |
+| `documenter` | documenter | Writes docs and READMEs |
+| `dockdesk_planner` | planner | DockDesk-specialised planning |
+| `dockdesk_coder` | coder | DockDesk-specialised coding |
+| `dockdesk_reviewer` | reviewer | DockDesk-specialised review |
 
-## Creating Custom Agents
-
-Create a GitHub repo with this structure:
-
-```
-my-uap-agent/
-├── uap-agent.yaml     # Agent manifest (required)
-├── system.txt         # System prompt
-└── README.md
-```
-
-**uap-agent.yaml:**
-```yaml
-name: fastapi-expert
-version: 1.0.0
-type: coder
-description: "Specialized FastAPI developer"
-
-prompt_file: system.txt
-
-defaults:
-  backend: groq
-  model: llama-3.1-70b-versatile
-
-capabilities:
-  - python
-  - fastapi
-  - sqlalchemy
-```
-
-Then install it:
-```bash
-uap agents add github:yourname/my-uap-agent
-```
+---
 
 ## The ACT (Agent Context Token)
 
-The ACT is the "passport" that carries state between agents:
+The ACT is the portable state packet that travels between agents:
 
 ```json
 {
   "session_id": "abc12345",
   "current_objective": "Build user authentication API",
-  "context_summary": "Planner designed 3-endpoint auth system. Need login, register, logout endpoints with JWT tokens.",
+  "context_summary": "Planner designed 3-endpoint auth system ...",
   "task_chain": [
-    {"agent": "planner", "task": "Designed API structure", "result": "success"}
+    { "agent": "planner", "task": "Designed API structure", "result": "success" }
   ],
   "artifacts": {
     "code_snippets": ["def login(...)..."],
-    "decisions": ["Using JWT for auth", "Password hashing with bcrypt"],
+    "decisions": ["Using JWT for auth"],
     "files_modified": ["auth/routes.py"]
   },
   "handoff_reason": "Design complete, ready for implementation",
@@ -242,48 +222,66 @@ The ACT is the "passport" that carries state between agents:
 }
 ```
 
-## Backends
+---
 
-UAP supports multiple LLM backends:
+## MCP Server
 
-- **Groq** (default): Fast inference, requires API key
-- **Ollama**: Local models, no API key needed
+UAP ships an MCP server that exposes 8 tools over **stdio** for IDE integrations:
 
 ```bash
-# Use Groq (default)
-uap config set default_backend groq
-uap config set groq_api_key gsk_xxx
-
-# Use Ollama
-uap config set default_backend ollama
-uap config set ollama_url http://localhost:11434
+# Run the MCP server
+python -m uap.mcp_server
 ```
 
-## Storage
+Tools: `uap_new_session`, `uap_run_agent`, `uap_session_status`, `uap_list_sessions`, `uap_list_agents`, `uap_get_config`, `uap_set_config`, `uap_local_status`.
 
-UAP stores data in `~/.uap/`:
+---
+
+## Telemetry & Analytics
+
+UAP captures structured events in JSONL format:
+
+```python
+from uap import get_telemetry
+t = get_telemetry()
+t.track("agent_invoked", {"agent": "coder", "backend": "groq"})
+```
+
+View analytics in the Streamlit dashboard or query the JSONL files directly at `~/.uap/telemetry/`.
+
+---
+
+## Security
+
+- **Fernet vault** encrypts API keys at rest (`~/.uap/vault.enc`)
+- **OAuth** for Google identity — tokens stored locally, never committed
+- Credentials are never logged or included in ACT packets
+
+---
+
+## Storage Layout
 
 ```
 ~/.uap/
-├── config.yaml      # Your configuration
-├── sessions/        # Saved ACT sessions
-│   ├── abc123.json
-│   └── def456.json
-└── agents/          # Installed agents
-    └── index.json
+├── config.yaml          # Settings (backend, model, URLs)
+├── vault.enc            # Encrypted API keys (Fernet)
+├── sessions/            # Saved ACT sessions
+├── agents/index.json    # Installed agent registry
+└── telemetry/           # JSONL event logs
 ```
+
+---
 
 ## Development
 
 ```bash
-# Clone and install in dev mode
-git clone https://github.com/uap-protocol/uap
-cd uap
+git clone https://github.com/srivatsa-source/UAP_Sandbox.git
+cd UAP_Sandbox/uap-protocol
 pip install -e ".[dev]"
-
-# Run tests
-pytest
+pytest tests/ -v
 ```
+
+---
 
 ## License
 

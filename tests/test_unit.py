@@ -1,5 +1,4 @@
-"""
-UAP v0.3.0 Unit Tests
+"""UAP v0.4.0 Unit Tests
 Validates all core modules without requiring API keys.
 """
 
@@ -402,15 +401,17 @@ class TestMCPServer:
 class TestPackage:
     def test_version(self):
         from uap import __version__
-        assert __version__ == "0.3.0"
+        assert __version__ == "0.4.0"
 
     def test_exports(self):
         from uap import (
             ACT, StateManager, Dispatcher, AgentConfig,
             AgentRegistry, TelemetryCollector, get_telemetry,
             get_all_agents, get_core_agents, get_dockdesk_agents,
+            LocalModelManager,
         )
         assert ACT is not None
+        assert LocalModelManager is not None
 
     def test_dashboard_imports(self):
         from uap.dashboard.models.state_packet import StatePacket
@@ -426,3 +427,68 @@ class TestPackage:
         assert deserialize_packet(serialize_packet(d)) == d
         assert validate_packet(d)
         assert not validate_packet({"foo": "bar"})
+
+
+# ============================================================================
+# Local Model Manager Tests
+# ============================================================================
+
+class TestLocalModelManager:
+    def test_backends_defined(self):
+        from uap.local_models import BACKENDS
+        assert "ollama" in BACKENDS
+        assert "lmstudio" in BACKENDS
+        assert "llamacpp" in BACKENDS
+        assert "vllm" in BACKENDS
+
+    def test_backend_status_dataclass(self):
+        from uap.local_models import BackendStatus
+        st = BackendStatus(backend="ollama", name="Ollama", url="http://localhost:11434")
+        assert st.online is False
+        assert st.models == []
+        assert st.error is None
+
+    def test_unknown_backend_health(self):
+        from uap.local_models import LocalModelManager
+        mgr = LocalModelManager()
+        st = mgr.health_check("nonexistent")
+        assert not st.online
+        assert "Unknown backend" in st.error
+
+    def test_unknown_backend_models(self):
+        from uap.local_models import LocalModelManager
+        mgr = LocalModelManager()
+        assert mgr.list_models("nonexistent") == []
+
+    def test_offline_health_check(self):
+        """Probing a backend that is not running returns offline status."""
+        from uap.local_models import LocalModelManager
+        mgr = LocalModelManager()
+        # Use a port that almost certainly has no server
+        mgr._config["ollama_url"] = "http://127.0.0.1:59999"
+        st = mgr.health_check("ollama")
+        assert not st.online
+        assert st.error is not None
+
+    def test_discover_returns_all_backends(self):
+        from uap.local_models import LocalModelManager, BACKENDS
+        mgr = LocalModelManager()
+        results = mgr.discover()
+        assert len(results) == len(BACKENDS)
+
+    def test_get_status_structure(self):
+        from uap.local_models import LocalModelManager
+        mgr = LocalModelManager()
+        info = mgr.get_status()
+        assert "backends" in info
+        assert "online_count" in info
+        assert "total_models" in info
+        assert isinstance(info["backends"], dict)
+
+    def test_monitor_alias(self):
+        from uap.local_models import LocalModelManager
+        mgr = LocalModelManager()
+        result = mgr.monitor()
+        assert "backends" in result
+        assert "online_count" in result
+        assert "total_models" in result

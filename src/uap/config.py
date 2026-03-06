@@ -30,6 +30,9 @@ def get_config() -> dict:
         "groq_api_key": os.getenv("GROQ_API_KEY", ""),
         "google_api_key": os.getenv("GOOGLE_API_KEY") or os.getenv("UAP_GEMINI_KEY", ""),
         "ollama_url": "http://localhost:11434",
+        "lmstudio_url": "http://localhost:1234",
+        "llamacpp_url": "http://localhost:8080",
+        "vllm_url": "http://localhost:8000",
         "default_backend": "groq",
         "default_model": "llama-3.3-70b-versatile",
     }

@@ -1,7 +1,8 @@
 """
 UAP Dispatcher - API Middleman
 Routes tasks between agents, manages handoffs, and orchestrates the ACT lifecycle.
-Supports Groq and Ollama as LLM backends.
+Supports 11 LLM backends: Groq, Gemini, Ollama, LM Studio, llama.cpp, vLLM,
+OpenAI, Anthropic, Mistral, Together AI, and OpenRouter.
 """
 
 import json
@@ -9,6 +10,8 @@ import re
 from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass, field
+
+import requests
 
 from uap.protocol import StateManager, ACT
 from uap.config import get_config
@@ -22,7 +25,7 @@ class AgentConfig:
     agent_type: str  # planner, coder, designer, reviewer, debugger, etc.
     system_prompt: str
     model: str = "gemini-1.5-flash"
-    backend: str = "gemini"  # "gemini", "groq", or "ollama"
+    backend: str = "gemini"  # gemini, groq, ollama, lmstudio, llamacpp, vllm, openai, anthropic, mistral, together, openrouter
     source: str = "builtin"  # "builtin", "github:user/repo", "local"
     metadata: dict = field(default_factory=dict)
 
@@ -394,6 +397,54 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
         except Exception as e:
             return json.dumps({"answer": f"ERROR: OpenRouter call failed: {str(e)}", "state_updates": {}})
     
+    def _call_lmstudio(self, prompt: str, model: str) -> str:
+        """Call LM Studio (OpenAI-compatible API on localhost:1234)."""
+        from uap.config import get_config
+        config = get_config()
+        base_url = config.get("lmstudio_url", "http://localhost:1234").rstrip("/")
+        try:
+            response = requests.post(
+                f"{base_url}/v1/chat/completions",
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: LM Studio call failed: {e}", "state_updates": {}})
+
+    def _call_llamacpp(self, prompt: str, model: str) -> str:
+        """Call llama.cpp server (/completion endpoint on localhost:8080)."""
+        from uap.config import get_config
+        config = get_config()
+        base_url = config.get("llamacpp_url", "http://localhost:8080").rstrip("/")
+        try:
+            response = requests.post(
+                f"{base_url}/completion",
+                json={"prompt": prompt, "n_predict": 2048, "stream": False},
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.json().get("content", "")
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: llama.cpp call failed: {e}", "state_updates": {}})
+
+    def _call_vllm(self, prompt: str, model: str) -> str:
+        """Call vLLM server (OpenAI-compatible API on localhost:8000)."""
+        from uap.config import get_config
+        config = get_config()
+        base_url = config.get("vllm_url", "http://localhost:8000").rstrip("/")
+        try:
+            response = requests.post(
+                f"{base_url}/v1/chat/completions",
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: vLLM call failed: {e}", "state_updates": {}})
+
     def _call_agent(self, agent: AgentConfig, prompt: str, user_email: str = None) -> str:
         """Route to appropriate backend."""
         if agent.backend == "gemini":
@@ -402,6 +453,12 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
             return self._call_groq(prompt, agent.model)
         elif agent.backend == "ollama":
             return self._call_ollama(prompt, agent.model)
+        elif agent.backend == "lmstudio":
+            return self._call_lmstudio(prompt, agent.model)
+        elif agent.backend == "llamacpp":
+            return self._call_llamacpp(prompt, agent.model)
+        elif agent.backend == "vllm":
+            return self._call_vllm(prompt, agent.model)
         elif agent.backend == "openai":
             return self._call_openai(prompt, agent.model, user_email)
         elif agent.backend == "anthropic":

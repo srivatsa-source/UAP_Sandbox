@@ -13,9 +13,10 @@ Usage:
 
 import os
 import sys
-import json
 import subprocess
 from pathlib import Path
+
+from uap.config import get_uap_home, get_config, set_config
 
 # Neuron-themed visuals
 try:
@@ -29,39 +30,13 @@ except ImportError:
     VISUALS_AVAILABLE = False
 
 
-def get_uap_home() -> Path:
-    """Get UAP home directory (~/.uap)"""
-    uap_home = Path.home() / ".uap"
-    uap_home.mkdir(exist_ok=True)
-    return uap_home
-
-
-def get_config() -> dict:
-    """Load configuration."""
-    config_file = get_uap_home() / "config.json"
-    if config_file.exists():
-        try:
-            return json.loads(config_file.read_text())
-        except:
-            pass
-    return {}
-
-
-def save_config(config: dict):
-    """Save configuration."""
-    config_file = get_uap_home() / "config.json"
-    config_file.write_text(json.dumps(config, indent=2))
-
-
 def find_dashboard() -> Path:
     """Find the dashboard script."""
     pkg_dir = Path(__file__).parent
     
-    # Possible locations
+    # Dashboard is now inside the uap package
     locations = [
-        pkg_dir / "dashboard_app.py",
-        pkg_dir.parent.parent / "uap-segment-dashboard" / "src" / "streamlit_app.py",
-        Path.cwd() / "uap-segment-dashboard" / "src" / "streamlit_app.py",
+        pkg_dir / "dashboard" / "app.py",
     ]
     
     for loc in locations:
@@ -168,8 +143,9 @@ def run_setup():
     else:
         print(f"\nMake sure Ollama is running: {url}")
     
-    save_config(config)
-    print(f"\n✅ Configuration saved to {get_uap_home() / 'config.json'}")
+    for k, v in config.items():
+        set_config(k, v)
+    print(f"\n✅ Configuration saved to {get_uap_home() / 'config.yaml'}")
     print("\n🎉 Setup complete! Run: uap-run dashboard")
     
     return 0

@@ -10,12 +10,7 @@ from datetime import datetime
 from typing import Any, Optional
 from pathlib import Path
 
-
-def get_uap_home() -> Path:
-    """Get UAP home directory (~/.uap)"""
-    uap_home = Path.home() / ".uap"
-    uap_home.mkdir(exist_ok=True)
-    return uap_home
+from uap.config import get_uap_home
 
 
 def get_sessions_dir() -> Path:
