@@ -9,17 +9,24 @@ Usage:
     uap agents add github:user/repo
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 from uap.protocol import ACT, StateManager
 from uap.dispatcher import Dispatcher, AgentConfig
 from uap.registry import AgentRegistry
+from uap.telemetry import TelemetryCollector, get_telemetry
+from uap.agents import get_all_agents, get_core_agents, get_dockdesk_agents
 
 __all__ = [
     "ACT",
-    "StateManager", 
+    "StateManager",
     "Dispatcher",
     "AgentConfig",
     "AgentRegistry",
+    "TelemetryCollector",
+    "get_telemetry",
+    "get_all_agents",
+    "get_core_agents",
+    "get_dockdesk_agents",
     "__version__",
 ]

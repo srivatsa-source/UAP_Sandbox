@@ -17,6 +17,17 @@ import json
 import subprocess
 from pathlib import Path
 
+# Neuron-themed visuals
+try:
+    from uap.visuals import (
+        show_startup, compact_header, neuron_prompt_str, NeuronSpinner,
+        themed_panel, themed_table, styled_menu, THEME, fade_transition,
+        neuron_prompt_ansi, NODE, AXON_H,
+    )
+    VISUALS_AVAILABLE = True
+except ImportError:
+    VISUALS_AVAILABLE = False
+
 
 def get_uap_home() -> Path:
     """Get UAP home directory (~/.uap)"""
@@ -100,15 +111,22 @@ def run_setup():
         from rich.console import Console
         from rich.prompt import Prompt
         from rich.panel import Panel
-        console = Console()
+        console = Console(force_terminal=True, color_system="truecolor")
         rich_available = True
     except ImportError:
         console = None
         rich_available = False
     
-    print("\n" + "=" * 50)
-    print("  🔧 UAP Setup Wizard")
-    print("=" * 50 + "\n")
+    if VISUALS_AVAILABLE:
+        compact_header(console)
+        if console:
+            console.print(f"[{THEME['info']}]🔧 UAP Setup Wizard[/{THEME['info']}]\n")
+        else:
+            print("\n  🔧 UAP Setup Wizard\n")
+    else:
+        print("\n" + "=" * 50)
+        print("  🔧 UAP Setup Wizard")
+        print("=" * 50 + "\n")
     
     config = get_config()
     
@@ -159,9 +177,21 @@ def run_setup():
 
 def run_check():
     """Check dependencies and configuration."""
-    print("\n" + "=" * 50)
-    print("  🔍 UAP Configuration Check")
-    print("=" * 50 + "\n")
+    if VISUALS_AVAILABLE:
+        try:
+            from rich.console import Console
+            console = Console(force_terminal=True, color_system="truecolor")
+        except ImportError:
+            console = None
+        compact_header(console)
+        if console:
+            console.print(f"[{THEME['info']}]🔍 UAP Configuration Check[/{THEME['info']}]\n")
+        else:
+            print("\n  🔍 UAP Configuration Check\n")
+    else:
+        print("\n" + "=" * 50)
+        print("  🔍 UAP Configuration Check")
+        print("=" * 50 + "\n")
     
     # Check dependencies
     deps = {
@@ -264,19 +294,32 @@ def run_test():
 
 def show_menu():
     """Show interactive menu."""
-    print("\n" + "=" * 50)
-    print("  🚀 UAP - Universal Agent Protocol")
-    print("=" * 50)
-    print("\n  What would you like to do?\n")
-    print("  1. 📊 Launch Dashboard")
-    print("  2. 💬 Start Chat CLI")
-    print("  3. 🧪 Run Test")
-    print("  4. 🔍 Check Configuration")
-    print("  5. 🔧 Setup Wizard")
-    print("  6. 🚪 Exit")
-    print()
+    menu_options = [
+        ("1", "📊 Launch Dashboard"),
+        ("2", "💬 Start Chat CLI"),
+        ("3", "🧪 Run Test"),
+        ("4", "🔍 Check Configuration"),
+        ("5", "🔧 Setup Wizard"),
+        ("6", "🚪 Exit"),
+    ]
     
-    choice = input("  Select [1-6]: ").strip()
+    if VISUALS_AVAILABLE:
+        try:
+            from rich.console import Console
+            console = Console(force_terminal=True, color_system="truecolor")
+        except ImportError:
+            console = None
+        show_startup(console, animate=True)
+        choice = styled_menu(console, menu_options)
+    else:
+        print("\n" + "=" * 50)
+        print("  ◉━━ UAP - Universal Agent Protocol")
+        print("=" * 50)
+        print("\n  What would you like to do?\n")
+        for key, desc in menu_options:
+            print(f"  ◉ {key}. {desc}")
+        print()
+        choice = input("  Select [1-6]: ").strip()
     
     if choice == "1":
         return run_dashboard()
@@ -294,7 +337,14 @@ def show_menu():
     elif choice == "5":
         return run_setup()
     elif choice == "6":
-        print("Goodbye!")
+        if VISUALS_AVAILABLE:
+            try:
+                from rich.console import Console
+                Console(force_terminal=True).print(f"[rgb(255,150,200)]Goodbye![/rgb(255,150,200)]")
+            except ImportError:
+                print("Goodbye!")
+        else:
+            print("Goodbye!")
         return 0
     else:
         print("Invalid choice")

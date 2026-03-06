@@ -11,7 +11,7 @@ import json
 if not os.getenv("GROQ_API_KEY"):
     print("Warning: GROQ_API_KEY not set. Run: uap config set groq_api_key <key>")
 
-from dispatcher import Dispatcher, AgentConfig
+from uap.dispatcher import Dispatcher, AgentConfig
 
 
 def run_live_handshake_test():

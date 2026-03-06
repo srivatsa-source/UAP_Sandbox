@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from uap.protocol import StateManager, ACT
 from uap.config import get_config
+from uap.telemetry import get_telemetry
 
 
 @dataclass
@@ -51,6 +52,9 @@ class Dispatcher:
         
         # Load reflector prompt
         self.reflector_prompt = self._load_reflector_prompt()
+        
+        # Telemetry
+        self.telemetry = get_telemetry()
     
     def _load_reflector_prompt(self) -> str:
         """Load the reflector prompt that instructs agents on UAP format."""
@@ -338,6 +342,58 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
                 "state_updates": {"context_summary": f"Mistral error: {str(e)}"}
             })
     
+    def _call_together(self, prompt: str, model: str) -> str:
+        """Call Together AI API (OpenAI-compatible)."""
+        import os
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("TOGETHER_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: TOGETHER_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                "https://api.together.xyz/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: Together call failed: {str(e)}", "state_updates": {}})
+    
+    def _call_openrouter(self, prompt: str, model: str) -> str:
+        """Call OpenRouter API (OpenAI-compatible)."""
+        import os
+        try:
+            import requests
+        except ImportError:
+            return json.dumps({"answer": "ERROR: requests not installed", "state_updates": {}})
+        
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return json.dumps({"answer": "ERROR: OPENROUTER_API_KEY not set", "state_updates": {}})
+        
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/uap-protocol"
+                },
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 2048},
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return json.dumps({"answer": f"ERROR: OpenRouter call failed: {str(e)}", "state_updates": {}})
+    
     def _call_agent(self, agent: AgentConfig, prompt: str, user_email: str = None) -> str:
         """Route to appropriate backend."""
         if agent.backend == "gemini":
@@ -352,6 +408,10 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
             return self._call_anthropic(prompt, agent.model, user_email)
         elif agent.backend == "mistral":
             return self._call_mistral(prompt, agent.model, user_email)
+        elif agent.backend == "together":
+            return self._call_together(prompt, agent.model)
+        elif agent.backend == "openrouter":
+            return self._call_openrouter(prompt, agent.model)
         else:
             return json.dumps({
                 "answer": f"ERROR: Unknown backend: {agent.backend}",
@@ -452,7 +512,31 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
         
         # Build prompt and call agent
         prompt = self._build_agent_prompt(agent, act, task)
-        raw_response = self._call_agent(agent, prompt)
+        
+        # Call agent with telemetry
+        self.telemetry.set_session(act.session_id)
+        timer = self.telemetry.timer()
+        error_msg = None
+        try:
+            with timer:
+                raw_response = self._call_agent(agent, prompt)
+        except Exception as e:
+            error_msg = str(e)
+            self.telemetry.track_dispatch(
+                agent_id=agent_id, agent_type=agent.agent_type,
+                backend=agent.backend, model=agent.model,
+                latency_ms=timer.elapsed_ms, success=False, error=error_msg,
+            )
+            self.telemetry.track_error(agent_id, type(e).__name__, error_msg, agent.backend)
+            self.telemetry.flush()
+            raise
+        
+        self.telemetry.track_dispatch(
+            agent_id=agent_id, agent_type=agent.agent_type,
+            backend=agent.backend, model=agent.model,
+            latency_ms=timer.elapsed_ms, success=True,
+            response_length=len(raw_response),
+        )
         
         # Parse response
         parsed = self._parse_agent_response(raw_response)
@@ -512,6 +596,15 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
         # Prepare handoff context
         handoff_data = self.state_manager.prepare_handoff(session_id)
         
+        # Track handoff telemetry
+        from_agent = handoff_data.get("handoff_context", {}).get("from_agent", "unknown")
+        reason = handoff_data.get("handoff_context", {}).get("reason", "")
+        act_size = len(json.dumps(handoff_data.get("act", {})))
+        self.telemetry.track_handoff(
+            from_agent=from_agent, to_agent=to_agent_id,
+            session_id=session_id, reason=reason, act_size_bytes=act_size,
+        )
+        
         # Dispatch to receiving agent (no task = continue from ACT)
         return self.dispatch(
             agent_id=to_agent_id,
@@ -542,30 +635,44 @@ The context_summary is CRITICAL - the next agent relies on it entirely.
         
         chain_results = []
         current_session_id = session_id
+        chain_timer = self.telemetry.timer()
+        chain_success = True
         
-        for i, agent_id in enumerate(agents):
-            is_first = (i == 0)
-            
-            if is_first:
-                # First agent gets the task
-                result = self.dispatch(
-                    agent_id=agent_id,
-                    session_id=current_session_id,
-                    task=task
-                )
-            else:
-                # Subsequent agents handoff from previous
-                result = self.handoff(
-                    session_id=current_session_id,
-                    to_agent_id=agent_id
-                )
-            
-            current_session_id = result["session_id"]
-            chain_results.append({
-                "agent": agent_id,
-                "response": result["response"][:500],  # Truncate for summary
-                "handoff_info": result.get("handoff_info")
-            })
+        with chain_timer:
+            for i, agent_id in enumerate(agents):
+                is_first = (i == 0)
+                
+                try:
+                    if is_first:
+                        # First agent gets the task
+                        result = self.dispatch(
+                            agent_id=agent_id,
+                            session_id=current_session_id,
+                            task=task
+                        )
+                    else:
+                        # Subsequent agents handoff from previous
+                        result = self.handoff(
+                            session_id=current_session_id,
+                            to_agent_id=agent_id
+                        )
+                except Exception:
+                    chain_success = False
+                    raise
+                
+                current_session_id = result["session_id"]
+                chain_results.append({
+                    "agent": agent_id,
+                    "response": result["response"][:500],  # Truncate for summary
+                    "handoff_info": result.get("handoff_info")
+                })
+        
+        self.telemetry.track_chain(
+            session_id=current_session_id, agents=agents,
+            total_latency_ms=chain_timer.elapsed_ms, success=chain_success,
+            task_preview=task,
+        )
+        self.telemetry.flush()
         
         return {
             "session_id": current_session_id,

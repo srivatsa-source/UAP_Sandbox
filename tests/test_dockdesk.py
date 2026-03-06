@@ -13,8 +13,8 @@ import json
 if not os.getenv("GROQ_API_KEY"):
     print("Warning: GROQ_API_KEY not set. Run: uap config set groq_api_key <key>")
 
-from dispatcher import Dispatcher
-from agents import get_dockdesk_agents, DOCKDESK_ANALYZER, DOCKDESK_IMPLEMENTER, DOCKDESK_QA
+from uap.dispatcher import Dispatcher, AgentConfig
+from uap.agents import get_dockdesk_agents, DOCKDESK_ANALYZER, DOCKDESK_IMPLEMENTER, DOCKDESK_QA
 
 
 def run_dockdesk_test():
@@ -182,7 +182,7 @@ def run_debug_scenario():
     print("DOCKDESK DEBUG SCENARIO")
     print("=" * 70)
     
-    from agents import DEBUGGER_AGENT, CODER_AGENT
+    from uap.agents import DEBUGGER_AGENT, CODER_AGENT
     
     dispatcher = Dispatcher()
     dispatcher.register_agent(DOCKDESK_ANALYZER)
@@ -242,24 +242,22 @@ def run_debug_scenario():
 
 if __name__ == "__main__":
     try:
-        print("\n" + "🚀 " * 20)
+        print("\n" + "=" * 70)
         print("STARTING DOCKDESK UAP TESTS")
-        print("🚀 " * 20)
+        print("=" * 70)
         
         # Main test: 3-agent handoff chain
         success_main = run_dockdesk_test()
         
         print("\n" + "=" * 70)
-        result_main = "✓ PASSED" if success_main else "✗ FAILED"
+        result_main = "PASSED" if success_main else "FAILED"
         print(f"MAIN TEST: {result_main}")
         print("=" * 70)
         
         # Bonus: Debug scenario
         # Uncomment to run:
         # success_debug = run_debug_scenario()
-        # print(f"DEBUG TEST: {'✓ PASSED' if success_debug else '✗ FAILED'}")
-        
+        # print(f"DEBUG TEST: {'PASSED' if success_debug else 'FAILED'}")
     except Exception as e:
         print(f"\n[ERROR] {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
+        print("\nIf you see import errors, run: pip install groq")

@@ -19,13 +19,24 @@ from rich.syntax import Syntax
 from rich import print as rprint
 import json
 
+# Neuron-themed visuals
+try:
+    from uap.visuals import (
+        show_startup, compact_header, neuron_prompt_str, NeuronSpinner,
+        themed_panel, themed_table, THEME, fade_transition, status_bar,
+    )
+    VISUALS_AVAILABLE = True
+except ImportError:
+    VISUALS_AVAILABLE = False
+
 app = typer.Typer(
     name="uap",
     help="Universal Agent Protocol - Connect AI agents via shared state",
-    add_completion=False
+    add_completion=False,
+    invoke_without_command=True,
 )
 
-console = Console()
+console = Console(force_terminal=True, color_system="truecolor")
 
 # Sub-commands
 agents_app = typer.Typer(help="Manage agents")
@@ -37,6 +48,22 @@ app.add_typer(agents_app, name="agents")
 app.add_typer(config_app, name="config")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(auth_app, name="auth")
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(
+    ctx: typer.Context,
+    no_animation: bool = typer.Option(False, "--no-animation", help="Skip startup animation"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+):
+    """Universal Agent Protocol - Connect AI agents via shared state."""
+    if VISUALS_AVAILABLE:
+        if ctx.invoked_subcommand is None:
+            # No subcommand — show full animated banner
+            show_startup(console, animate=not no_animation and not quiet)
+        elif not quiet:
+            # Subcommand provided — show compact header
+            compact_header(console)
 
 
 # =============================================================================
@@ -66,7 +93,8 @@ def new(
     from uap.dispatcher import Dispatcher
     from uap.registry import AgentRegistry
     
-    with console.status("[bold green]Initializing UAP..."):
+    _spinner = NeuronSpinner(console, "Initializing UAP...") if VISUALS_AVAILABLE else None
+    with (_spinner if _spinner else console.status("[bold green]Initializing UAP...")):
         dispatcher = Dispatcher()
         registry = AgentRegistry()
         
@@ -85,13 +113,14 @@ def new(
             console.print("[red]No valid agents found. Run 'uap agents list' to see available agents.[/red]")
             raise typer.Exit(1)
     
-    console.print(f"\n[bold cyan]UAP Session Starting[/bold cyan]")
+    console.print(f"\n[{THEME['info'] if VISUALS_AVAILABLE else 'bold cyan'}]UAP Session Starting[/{THEME['info'] if VISUALS_AVAILABLE else 'bold cyan'}]")
     console.print(f"Task: {task}")
     console.print(f"Agents: {', '.join(agent_list)}\n")
     
     if auto:
         # Run full chain automatically
-        with console.status("[bold green]Running agent chain..."):
+        _spinner2 = NeuronSpinner(console, "Running agent chain...") if VISUALS_AVAILABLE else None
+        with (_spinner2 if _spinner2 else console.status("[bold green]Running agent chain...")):
             result = dispatcher.run_chain(task, agent_list)
         
         _display_chain_result(result)
@@ -99,7 +128,8 @@ def new(
         # Run first agent only, show session ID for continuation
         first_agent = agent_list[0]
         
-        with console.status(f"[bold green]Running {first_agent}..."):
+        _spinner3 = NeuronSpinner(console, f"Running {first_agent}...") if VISUALS_AVAILABLE else None
+        with (_spinner3 if _spinner3 else console.status(f"[bold green]Running {first_agent}...")):
             result = dispatcher.dispatch(agent_id=first_agent, task=task)
         
         _display_single_result(result, first_agent, agent_list)
@@ -203,11 +233,22 @@ def agents_list():
     registry = AgentRegistry()
     agents = registry.list_all()
     
-    table = Table(title="Available Agents")
-    table.add_column("ID", style="cyan")
-    table.add_column("Type", style="green")
-    table.add_column("Source", style="dim")
-    table.add_column("Model", style="yellow")
+    if VISUALS_AVAILABLE:
+        table = themed_table(
+            title="Available Agents",
+            columns=[
+                ("ID", "info"),
+                ("Type", "success"),
+                ("Source", "dim"),
+                ("Model", "accent"),
+            ]
+        )
+    else:
+        table = Table(title="Available Agents")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type", style="green")
+        table.add_column("Source", style="dim")
+        table.add_column("Model", style="yellow")
     
     for agent in agents:
         table.add_row(
@@ -235,10 +276,11 @@ def agents_add(
     
     registry = AgentRegistry()
     
-    with console.status(f"[bold green]Installing agent from {repo}..."):
+    _spinner4 = NeuronSpinner(console, f"Installing agent from {repo}...") if VISUALS_AVAILABLE else None
+    with (_spinner4 if _spinner4 else console.status(f"[bold green]Installing agent from {repo}...")):
         try:
             agent = registry.install_from_github(repo)
-            console.print(f"[green]✓ Installed agent: {agent.agent_id}[/green]")
+            console.print(f"[{THEME['success'] if VISUALS_AVAILABLE else 'green'}]✓ Installed agent: {agent.agent_id}[/{THEME['success'] if VISUALS_AVAILABLE else 'green'}]")
             console.print(f"  Type: {agent.agent_type}")
             console.print(f"  Model: {agent.model}")
         except Exception as e:
@@ -298,17 +340,28 @@ def agents_search(
     
     registry = AgentRegistry()
     
-    with console.status("[bold green]Searching GitHub..."):
+    _spinner5 = NeuronSpinner(console, "Searching GitHub...") if VISUALS_AVAILABLE else None
+    with (_spinner5 if _spinner5 else console.status("[bold green]Searching GitHub...")):
         results = registry.search_github(query)
     
     if not results:
         console.print("[yellow]No agents found[/yellow]")
         return
     
-    table = Table(title="GitHub UAP Agents")
-    table.add_column("Repo", style="cyan")
-    table.add_column("Description")
-    table.add_column("Stars", style="yellow")
+    if VISUALS_AVAILABLE:
+        table = themed_table(
+            title="GitHub UAP Agents",
+            columns=[
+                ("Repo", "info"),
+                ("Description", "table_row_1"),
+                ("Stars", "accent"),
+            ]
+        )
+    else:
+        table = Table(title="GitHub UAP Agents")
+        table.add_column("Repo", style="cyan")
+        table.add_column("Description")
+        table.add_column("Stars", style="yellow")
     
     for r in results:
         table.add_row(r["repo"], r["description"][:50], str(r["stars"]))
@@ -365,9 +418,18 @@ def config_list():
     
     config = get_config()
     
-    table = Table(title="Configuration")
-    table.add_column("Key", style="cyan")
-    table.add_column("Value")
+    if VISUALS_AVAILABLE:
+        table = themed_table(
+            title="Configuration",
+            columns=[
+                ("Key", "info"),
+                ("Value", "table_row_1"),
+            ]
+        )
+    else:
+        table = Table(title="Configuration")
+        table.add_column("Key", style="cyan")
+        table.add_column("Value")
     
     for key, value in config.items():
         # Mask secrets
@@ -449,11 +511,22 @@ def auth_status():
     # Show linked agents
     linked = get_linked_agents(email)
     
-    table = Table(title="Linked Agents")
-    table.add_column("Agent", style="cyan")
-    table.add_column("Provider")
-    table.add_column("Status", style="green")
-    table.add_column("Linked At", style="dim")
+    if VISUALS_AVAILABLE:
+        table = themed_table(
+            title="Linked Agents",
+            columns=[
+                ("Agent", "info"),
+                ("Provider", "table_row_1"),
+                ("Status", "success"),
+                ("Linked At", "dim"),
+            ]
+        )
+    else:
+        table = Table(title="Linked Agents")
+        table.add_column("Agent", style="cyan")
+        table.add_column("Provider")
+        table.add_column("Status", style="green")
+        table.add_column("Linked At", style="dim")
     
     for agent_id, info in linked.items():
         status = ""
@@ -775,12 +848,24 @@ def sessions_list():
         console.print("[yellow]No sessions found[/yellow]")
         return
     
-    table = Table(title="Sessions")
-    table.add_column("ID", style="cyan")
-    table.add_column("Objective")
-    table.add_column("Agents", style="green")
-    table.add_column("Tasks", style="yellow")
-    table.add_column("Updated")
+    if VISUALS_AVAILABLE:
+        table = themed_table(
+            title="Sessions",
+            columns=[
+                ("ID", "info"),
+                ("Objective", "table_row_1"),
+                ("Agents", "success"),
+                ("Tasks", "accent"),
+                ("Updated", "dim"),
+            ]
+        )
+    else:
+        table = Table(title="Sessions")
+        table.add_column("ID", style="cyan")
+        table.add_column("Objective")
+        table.add_column("Agents", style="green")
+        table.add_column("Tasks", style="yellow")
+        table.add_column("Updated")
     
     for s in sessions[:20]:  # Show last 20
         table.add_row(
@@ -839,11 +924,15 @@ def sessions_export(
 
 def _display_single_result(result: dict, agent: str, remaining_agents: list):
     """Display result from a single agent run."""
-    console.print(Panel(
-        result.get("response", "No response"),
-        title=f"[bold green]{agent}[/bold green]",
-        border_style="green"
-    ))
+    if VISUALS_AVAILABLE:
+        p = themed_panel(result.get("response", "No response"), title=agent)
+        console.print(p)
+    else:
+        console.print(Panel(
+            result.get("response", "No response"),
+            title=f"[bold green]{agent}[/bold green]",
+            border_style="green"
+        ))
     
     session_id = result.get("session_id", "")
     console.print(f"\n[bold]Session ID:[/bold] {session_id}")
@@ -851,11 +940,14 @@ def _display_single_result(result: dict, agent: str, remaining_agents: list):
     # Show handoff info
     handoff = result.get("handoff_info", {})
     if handoff.get("ready_for_handoff"):
-        console.print(f"[yellow]→ Handoff requested:[/yellow] {handoff.get('reason', '')}")
+        _hcolor = THEME['accent'] if VISUALS_AVAILABLE else 'yellow'
+        console.print(f"[{_hcolor}]→ Handoff requested:[/{_hcolor}] {handoff.get('reason', '')}")
         next_agent = handoff.get("next_agent_hint", "")
         if next_agent:
-            console.print(f"[cyan]→ Suggested next:[/cyan] {next_agent}")
-            console.print(f"\n[dim]Continue with: uap run {session_id} --agent {next_agent}[/dim]")
+            _ncolor = THEME['info'] if VISUALS_AVAILABLE else 'cyan'
+            console.print(f"[{_ncolor}]→ Suggested next:[/{_ncolor}] {next_agent}")
+            _dcolor = THEME['dim'] if VISUALS_AVAILABLE else 'dim'
+            console.print(f"\n[{_dcolor}]Continue with: uap run {session_id} --agent {next_agent}[/{_dcolor}]")
     
     # Show remaining agents
     if remaining_agents and len(remaining_agents) > 1:
@@ -866,36 +958,47 @@ def _display_single_result(result: dict, agent: str, remaining_agents: list):
 
 def _display_chain_result(result: dict):
     """Display result from a full chain run."""
-    console.print("\n[bold cyan]Agent Chain Complete[/bold cyan]\n")
+    _title_color = THEME['info'] if VISUALS_AVAILABLE else 'bold cyan'
+    console.print(f"\n[{_title_color}]Agent Chain Complete[/{_title_color}]\n")
     
     for i, step in enumerate(result.get("chain", []), 1):
         agent = step.get("agent", "unknown")
         response = step.get("response", "")[:300]
         
         console.print(f"[bold]{i}. {agent}[/bold]")
-        console.print(Panel(response + "...", border_style="dim"))
+        if VISUALS_AVAILABLE:
+            console.print(themed_panel(response + "...", title=agent))
+        else:
+            console.print(Panel(response + "...", border_style="dim"))
     
     # Validation
     validation = result.get("validation", {})
     if validation.get("valid"):
-        console.print("[bold green]✓ ACT Handshake Valid[/bold green]")
+        _vcolor = THEME['success'] if VISUALS_AVAILABLE else 'bold green'
+        console.print(f"[{_vcolor}]✓ ACT Handshake Valid[/{_vcolor}]")
     else:
-        console.print("[bold red]✗ Handshake Validation Failed[/bold red]")
+        _ecolor = THEME['error'] if VISUALS_AVAILABLE else 'bold red'
+        console.print(f"[{_ecolor}]✗ Handshake Validation Failed[/{_ecolor}]")
     
     console.print(f"\n[bold]Session ID:[/bold] {result.get('session_id')}")
-    console.print(f"[dim]View details: uap status {result.get('session_id')}[/dim]")
+    _dcolor = THEME['dim'] if VISUALS_AVAILABLE else 'dim'
+    console.print(f"[{_dcolor}]View details: uap status {result.get('session_id')}[/{_dcolor}]")
 
 
 def _display_act(act: dict):
     """Display ACT details."""
-    console.print(Panel(
+    content = (
         f"[bold]Objective:[/bold] {act.get('current_objective', 'N/A')}\n\n"
         f"[bold]Context:[/bold] {act.get('context_summary', 'N/A')}\n\n"
         f"[bold]Last Agent:[/bold] {act.get('origin_agent', 'N/A')}\n"
         f"[bold]Handoff Reason:[/bold] {act.get('handoff_reason', 'None')}\n"
-        f"[bold]Next Agent Hint:[/bold] {act.get('next_agent_hint', 'None')}",
-        title=f"Session: {act.get('session_id')}"
-    ))
+        f"[bold]Next Agent Hint:[/bold] {act.get('next_agent_hint', 'None')}"
+    )
+    if VISUALS_AVAILABLE:
+        console.print(themed_panel(content, title=f"Session: {act.get('session_id')}"))
+    else:
+        console.print(Panel(content, title=f"Session: {act.get('session_id')}"))
+
     
     # Task chain
     if act.get("task_chain"):
