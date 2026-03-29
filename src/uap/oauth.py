@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from uap.protocol import get_uap_home
+from uap.core.protocol import get_uap_home
 
 
 # OAuth scopes - email for identity, Gemini API for LLM access
@@ -117,8 +117,13 @@ def get_valid_credentials():
     return credentials
 
 
-def get_user_info(credentials) -> Dict[str, Any]:
+def get_user_info(credentials=None) -> Dict[str, Any]:
     """Fetch user profile information from Google."""
+    if credentials is None:
+        credentials = load_credentials()
+        if not credentials:
+            return {}
+            
     try:
         from googleapiclient.discovery import build
         

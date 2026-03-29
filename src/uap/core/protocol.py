@@ -1,5 +1,5 @@
 """
-UAP Protocol - State Manager
+UAP Core Protocol - State Manager
 Handles Agent Context Token (ACT) creation, updates, and persistence.
 The ACT is the "state packet" that enables LLM-to-LLM handoffs without user re-prompting.
 """
@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Optional
 from pathlib import Path
 
-from uap.config import get_uap_home
+from uap.core.config import get_uap_home
 
 
 def get_sessions_dir() -> Path:

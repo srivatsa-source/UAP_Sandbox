@@ -1,16 +1,6 @@
 """
 UAP MCP Server — Model Context Protocol entry point.
-Exposes the full dispatcher as 8 MCP tools over stdio transport.
-
-Tools:
-  1. create_session   — Create a new ACT session
-  2. dispatch         — Send a task to a registered agent
-  3. handoff          — Hand off an ACT to another agent
-  4. run_chain        — Run a multi-agent chain
-  5. get_session      — Retrieve an ACT by session ID
-  6. list_sessions    — List all saved sessions
-  7. list_agents      — List registered agents
-  8. validate         — Validate a handshake
+Exposes the pure State Router as MCP tools over stdio transport.
 """
 
 from __future__ import annotations
@@ -19,32 +9,23 @@ import json
 import sys
 from typing import Any
 
-# MCP SDK is an optional dependency; fail gracefully at import time.
 try:
     from mcp.server import Server
-    from mcp.server.stdio import run_stdio
+    from mcp.server.stdio import stdio_server
     from mcp.types import Tool, TextContent
     HAS_MCP = True
-except ImportError:
+except ImportError as e:
+    import sys
+    print(f"DEBUG: {e}", file=sys.stderr)
     HAS_MCP = False
 
-from uap.protocol import StateManager
+from uap.core.protocol import StateManager
 from uap.dispatcher import Dispatcher, AgentConfig
-from uap.agents import get_all_agents
-
 
 def _build_server() -> "Server":
-    """Construct and configure the MCP server with all 8 tools."""
+    """Construct and configure the minimal UAP MCP server."""
     server = Server("uap-protocol")
     dispatcher = Dispatcher()
-    
-    # Pre-register all built-in agents
-    for agent in get_all_agents():
-        dispatcher.register_agent(agent)
-
-    # ------------------------------------------------------------------
-    # Tool definitions
-    # ------------------------------------------------------------------
 
     TOOLS = [
         Tool(
@@ -62,44 +43,20 @@ def _build_server() -> "Server":
             },
         ),
         Tool(
-            name="dispatch",
-            description="Dispatch a task to a registered UAP agent.",
+            name="dispatch_raw",
+            description="Dispatch a task to a dynamically defined UAP agent using OpenAI or Ollama backends.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "Agent to dispatch to."},
-                    "task": {"type": "string", "description": "The task description."},
+                    "agent_id": {"type": "string"},
+                    "task": {"type": "string"},
                     "session_id": {"type": "string", "description": "Existing session ID (optional)."},
+                    "backend": {"type": "string", "enum": ["openai", "ollama"], "default": "openai"},
+                    "model": {"type": "string", "default": "gpt-4o"},
+                    "system_prompt": {"type": "string", "description": "The agent's personality and instructions."},
+                    "user_email": {"type": "string", "description": "The verified user email to pull API keys from the Keyring Vault. Required for OpenAI."}
                 },
-                "required": ["agent_id", "task"],
-            },
-        ),
-        Tool(
-            name="handoff",
-            description="Hand off an existing ACT session to another agent (ACT Handshake).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string", "description": "Session to hand off."},
-                    "to_agent_id": {"type": "string", "description": "Receiving agent ID."},
-                },
-                "required": ["session_id", "to_agent_id"],
-            },
-        ),
-        Tool(
-            name="run_chain",
-            description="Run a chain of agents on a task. Each agent hands off via the ACT.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task": {"type": "string", "description": "The initial task."},
-                    "agents": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Ordered list of agent IDs.",
-                    },
-                },
-                "required": ["task", "agents"],
+                "required": ["agent_id", "task", "system_prompt"],
             },
         ),
         Tool(
@@ -115,24 +72,8 @@ def _build_server() -> "Server":
         ),
         Tool(
             name="list_sessions",
-            description="List all saved ACT sessions.",
+            description="List all saved ACT sessions on disk.",
             inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="list_agents",
-            description="List all registered UAP agents.",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="validate",
-            description="Validate that a proper ACT handshake occurred in a session.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "session_id": {"type": "string"},
-                },
-                "required": ["session_id"],
-            },
         ),
     ]
 
@@ -147,31 +88,25 @@ def _build_server() -> "Server":
 
     return server
 
-
 def _execute_tool(dispatcher: Dispatcher, name: str, args: dict[str, Any]) -> Any:
-    """Route a tool call to the appropriate dispatcher method."""
     if name == "create_session":
         act = dispatcher.state_manager.create_session(args["objective"])
         dispatcher.state_manager.save_session(act.session_id)
         return {"session_id": act.session_id, "act": act.to_dict()}
 
-    if name == "dispatch":
+    if name == "dispatch_raw":
+        config_override = {
+            "agent_id": args["agent_id"],
+            "system_prompt": args["system_prompt"],
+            "model": args.get("model", "gpt-4o"),
+            "backend": args.get("backend", "openai")
+        }
         return dispatcher.dispatch(
             agent_id=args["agent_id"],
             task=args["task"],
             session_id=args.get("session_id"),
-        )
-
-    if name == "handoff":
-        return dispatcher.handoff(
-            session_id=args["session_id"],
-            to_agent_id=args["to_agent_id"],
-        )
-
-    if name == "run_chain":
-        return dispatcher.run_chain(
-            task=args["task"],
-            agents=args["agents"],
+            config_override=config_override,
+            user_email=args.get("user_email")
         )
 
     if name == "get_session":
@@ -183,23 +118,14 @@ def _execute_tool(dispatcher: Dispatcher, name: str, args: dict[str, Any]) -> An
     if name == "list_sessions":
         return dispatcher.state_manager.list_sessions()
 
-    if name == "list_agents":
-        return dispatcher.list_agents()
-
-    if name == "validate":
-        return dispatcher.validate_handshake(args["session_id"])
-
     return {"error": f"Unknown tool: {name}"}
 
-
 async def _async_main():
-    """Async entry point for MCP stdio transport."""
     server = _build_server()
-    await run_stdio(server)
-
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 def main():
-    """CLI entry point (uap-mcp)."""
     if not HAS_MCP:
         print(
             "ERROR: The 'mcp' package is required for the MCP server.\n"
@@ -207,10 +133,8 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-
     import asyncio
     asyncio.run(_async_main())
-
 
 if __name__ == "__main__":
     main()
