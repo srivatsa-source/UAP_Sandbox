@@ -51,7 +51,7 @@ def _build_server() -> "Server":
                     "agent_id": {"type": "string"},
                     "task": {"type": "string"},
                     "session_id": {"type": "string", "description": "Existing session ID (optional)."},
-                    "backend": {"type": "string", "enum": ["openai", "ollama"], "default": "openai"},
+                    "backend": {"type": "string", "enum": ["openai", "ollama", "mock"], "default": "openai"},
                     "model": {"type": "string", "default": "gpt-4o"},
                     "system_prompt": {"type": "string", "description": "The agent's personality and instructions."},
                     "user_email": {"type": "string", "description": "The verified user email to pull API keys from the Keyring Vault. Required for OpenAI."}

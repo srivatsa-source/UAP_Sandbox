@@ -179,6 +179,54 @@ def clear_credentials() -> bool:
     return cleared
 
 
+UAP_SUCCESS_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UAP Authentication Successful</title>
+    <style>
+        body {
+            background-color: #0d0d0d;
+            color: #00ff00;
+            font-family: "Courier New", Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .terminal {
+            background: #000000;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 20px;
+            width: 80%;
+            max-width: 600px;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.1);
+        }
+        .prompt::before {
+            content: "> ";
+            color: #00ff00;
+        }
+        .blink {
+            animation: blinker 1s linear infinite;
+        }
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal">
+        <p class="prompt">uap login</p>
+        <p>[OK] Login successful.</p>
+        <p>[INFO] You can now safely close this browser window and continue your session through the CLI.</p>
+        <p class="prompt"><span class="blink">_</span></p>
+    </div>
+</body>
+</html>
+"""
+
 def run_cli_oauth_flow():
     """
     Run OAuth flow for CLI authentication.
@@ -198,18 +246,52 @@ def run_cli_oauth_flow():
             DEFAULT_CLIENT_CONFIG,
             scopes=SCOPES
         )
-    
+
     # Run local server to handle OAuth callback
     credentials = flow.run_local_server(
         port=8080,
         prompt='consent',
-        success_message='UAP authentication successful! You can close this window.'
+        success_message=UAP_SUCCESS_HTML
     )
     
     # Save credentials
     save_credentials(credentials)
     
     return credentials
+
+
+def generate_agent_card() -> Dict[str, Any]:
+    """
+    Generate an A2A-compliant Agent Card advertising capabilities and identity.
+    This links the A2A identity standard with UAP's underlying OAuth system.
+    """
+    profile = get_cached_user_profile()
+    if not profile:
+        profile = {"email": "anonymous@uap.local", "name": "Anonymous UAP Agent"}
+        
+    return {
+        "$schema": "https://a2a-protocol.org/schemas/v1/agent-card.json",
+        "agent_id": f"uap-{profile.get('email', 'unknown')}",
+        "name": f"UAP Agent ({profile.get('name', 'Unknown')})",
+        "description": "Universal Agent Protocol Identity mapping for A2A handoffs.",
+        "capabilities": {
+            "mcp_client": True,
+            "tool_execution": True
+        },
+        "auth_requirements": {
+            "type": "oauth2",
+            "provider": "google",
+            "scopes": SCOPES,
+            "status": "authenticated" if get_cached_user_profile() else "unauthenticated"
+        },
+        "endpoints": {
+            "mcp": "stdio"
+        },
+        "metadata": {
+            "generated_at": datetime.now().isoformat(),
+            "uap_version": "0.4.0"
+        }
+    }
 
 
 def create_web_oauth_flow(redirect_uri: str):

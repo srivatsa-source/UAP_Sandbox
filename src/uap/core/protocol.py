@@ -32,6 +32,7 @@ class ACT:
         self.updated_at = self.created_at
         
         # Core state fields
+        self.phase: str = "init"  # init, processing, validation, complete
         self.task_chain: list[dict] = []  # History of tasks in this session
         self.current_objective: str = ""  # What we're trying to accomplish
         self.context_summary: str = ""  # Compressed context for the next agent
@@ -49,8 +50,10 @@ class ACT:
             "files_modified": []  # Track file changes
         }
         
-        # Validation tracking
+        # Validation and Lineage
         self.handshake_log: list[dict] = []  # Log of all agent touches
+        self.tool_usage_lineage: list[dict] = []  # Maps A2A agent IDs to specific MCP tools invoked
+        self.agent_validations: dict[str, str] = {}  # Validation status per agent
     
     def to_dict(self) -> dict:
         """Serialize ACT to dictionary for JSON export."""
@@ -58,6 +61,7 @@ class ACT:
             "session_id": self.session_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "phase": self.phase,
             "task_chain": self.task_chain,
             "current_objective": self.current_objective,
             "context_summary": self.context_summary,
@@ -65,7 +69,9 @@ class ACT:
             "handoff_reason": self.handoff_reason,
             "next_agent_hint": self.next_agent_hint,
             "artifacts": self.artifacts,
-            "handshake_log": self.handshake_log
+            "handshake_log": self.handshake_log,
+            "tool_usage_lineage": self.tool_usage_lineage,
+            "agent_validations": self.agent_validations
         }
     
     @classmethod
@@ -74,6 +80,7 @@ class ACT:
         act = cls(session_id=data.get("session_id"))
         act.created_at = data.get("created_at", act.created_at)
         act.updated_at = data.get("updated_at", act.updated_at)
+        act.phase = data.get("phase", "init")
         act.task_chain = data.get("task_chain", [])
         act.current_objective = data.get("current_objective", "")
         act.context_summary = data.get("context_summary", "")
@@ -82,6 +89,8 @@ class ACT:
         act.next_agent_hint = data.get("next_agent_hint", "")
         act.artifacts = data.get("artifacts", act.artifacts)
         act.handshake_log = data.get("handshake_log", [])
+        act.tool_usage_lineage = data.get("tool_usage_lineage", [])
+        act.agent_validations = data.get("agent_validations", {})
         return act
 
 
@@ -143,6 +152,9 @@ class StateManager:
         act.updated_at = datetime.now().isoformat()
         
         # Apply updates from agent response
+        if "phase" in state_updates:
+            act.phase = state_updates["phase"]
+
         if "current_objective" in state_updates:
             act.current_objective = state_updates["current_objective"]
         
@@ -156,6 +168,16 @@ class StateManager:
                 "timestamp": act.updated_at,
                 "result_summary": state_updates.get("result_summary", "")
             })
+            
+        if "tool_usage" in state_updates:
+            for tool_use in state_updates["tool_usage"]:
+                tool_use["agent"] = agent_id
+                tool_use["timestamp"] = act.updated_at
+                act.tool_usage_lineage.append(tool_use)
+                
+        if "agent_validation" in state_updates:
+            val_status = state_updates["agent_validation"].get("status", "unknown")
+            act.agent_validations[agent_id] = val_status
         
         if "handoff_reason" in state_updates:
             act.handoff_reason = state_updates["handoff_reason"]

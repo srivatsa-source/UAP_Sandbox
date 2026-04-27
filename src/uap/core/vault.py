@@ -84,6 +84,7 @@ def get_linked_agents(user_identifier: str) -> Dict[str, Dict[str, Any]]:
     providers = {
         "gemini": {"name": "Gemini", "provider": "Google", "oauth_based": True},
         "openai": {"name": "GPT-4", "provider": "OpenAI", "oauth_based": False},
+        "anthropic": {"name": "Claude Desktop", "provider": "Anthropic", "oauth_based": False},
         "ollama": {"name": "Ollama", "provider": "Ollama", "oauth_based": False},
     }
 
